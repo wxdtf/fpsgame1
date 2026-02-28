@@ -13,11 +13,23 @@ enum TileType: Int {
     case door = 4
     case brickTorch = 5
     case exitPortal = 6
+    case lockedDoorRed = 7
+    case lockedDoorBlue = 8
+    case lockedDoorYellow = 9
+    case damageFloor = 10
 
     var isWall: Bool {
         switch self {
-        case .empty, .door: return false
+        case .empty, .door, .damageFloor: return false
+        case .lockedDoorRed, .lockedDoorBlue, .lockedDoorYellow: return false
         default: return true
+        }
+    }
+
+    var isDoor: Bool {
+        switch self {
+        case .door, .lockedDoorRed, .lockedDoorBlue, .lockedDoorYellow: return true
+        default: return false
         }
     }
 
@@ -30,6 +42,10 @@ enum TileType: Int {
         case .door: return TextureAtlas.door
         case .brickTorch: return TextureAtlas.brickTorch
         case .exitPortal: return TextureAtlas.exitPortal
+        case .lockedDoorRed: return TextureAtlas.lockedDoorRed
+        case .lockedDoorBlue: return TextureAtlas.lockedDoorBlue
+        case .lockedDoorYellow: return TextureAtlas.lockedDoorYellow
+        case .damageFloor: return 0
         }
     }
 }
@@ -64,7 +80,7 @@ struct GameWorld {
     func isSolid(x: Int, y: Int) -> Bool {
         let tile = tileAt(x: x, y: y)
         if tile.isWall { return true }
-        if tile == .door {
+        if tile.isDoor {
             if let door = doors.first(where: { $0.tileX == x && $0.tileY == y }) {
                 return door.openAmount < 0.8  // Allow passage when door is mostly open
             }
@@ -111,7 +127,7 @@ struct GameWorld {
             for (x, val) in row.enumerated() {
                 let tile = TileType(rawValue: val) ?? .empty
                 tiles1D[y * w + x] = tile
-                if tile == .door {
+                if tile.isDoor {
                     doors.append(DoorState(tileX: x, tileY: y))
                 }
             }
@@ -131,12 +147,56 @@ struct GameWorld {
 
     static let maxLevel = 3
 
-    // MARK: - Level 1: "Military Base" — Metal/industrial theme
+    static func briefingText(for level: Int) -> (title: String, lines: [String]) {
+        switch level {
+        case 1:
+            return (
+                "E1M1: UAC Military Base",
+                [
+                    "The UAC facility has gone dark.",
+                    "Reports of hostile entities throughout.",
+                    "Fight through the base and locate the",
+                    "exit portal. No key cards required.",
+                    "",
+                    "Objective: Reach the exit portal."
+                ]
+            )
+        case 2:
+            return (
+                "E1M2: Hell's Gateway",
+                [
+                    "You've entered an ancient temple",
+                    "corrupted by demonic energy.",
+                    "The exit is sealed behind a RED door.",
+                    "Find the RED KEY CARD in the west wing.",
+                    "",
+                    "Objective: Find the red key and escape."
+                ]
+            )
+        case 3:
+            return (
+                "E1M3: Toxin Refinery",
+                [
+                    "The refinery is overrun. Heavy resistance.",
+                    "A RED KEY opens the mid-section.",
+                    "A BLUE KEY beyond opens the final arena.",
+                    "Expect the worst. This is the last stand.",
+                    "",
+                    "Objective: Find both keys. Reach the exit."
+                ]
+            )
+        default:
+            return ("UNKNOWN", ["No briefing available."])
+        }
+    }
+
+    // MARK: - Level 1: "UAC Military Base" — Metal/industrial theme
     //
     // Design: Indoor military facility. Primarily METAL walls (gray/silver).
-    // Linear start-to-exit. Start bottom-left, exit portal top-right.
-    // Corridors, barracks, armory. ~12 enemies, introductory difficulty.
-    // Exit portal is clearly visible at the end of the final corridor.
+    // Linear start-to-exit. No keys required (tutorial level).
+    // Start bottom-left, exit portal top-right.
+    // Corridors, barracks, armory. Optional side room with chaingun + berserk.
+    // ~12 enemies, introductory difficulty.
 
     private static func level1Data() -> LevelData {
         // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal
@@ -220,6 +280,9 @@ struct GameWorld {
                 // Exit corridor
                 (.ammoBullets(amount: 20), 29.5, 24.5),
                 (.healthPack(amount: 25), 29.5, 5.5),
+                // Optional side room — chaingun & berserk
+                (.chaingunPickup, 2.5, 17.5),
+                (.berserkPack, 4.5, 17.5),
             ]
         )
     }
@@ -228,7 +291,7 @@ struct GameWorld {
     //
     // Design: Central hub with branching paths. Primarily BRICK walls with
     // torch pillars for a hellish dungeon atmosphere. Exit portal in north wing.
-    // West: Armory. East: Demon pits. North: Arena → Exit.
+    // West: Armory (RED KEY here). East: Demon pits. North: Arena → RED LOCKED DOOR → Exit.
     // ~16 enemies, moderate difficulty.
 
     private static func level2Data() -> LevelData {
@@ -241,7 +304,7 @@ struct GameWorld {
             [1,0,0,0,0,0,0,0,0,0,0,4,0,0,0,1,1,0,0,4,0,0,0,0,0,0,0,0,0,0,0,1], // 3
             [1,0,0,5,0,0,0,0,5,0,0,1,1,0,0,0,0,0,0,1,1,0,0,5,0,0,0,0,5,0,0,1], // 4
             [1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,1], // 5
-            [1,1,1,1,5,1,1,1,1,0,0,1,1,1,1,4,1,1,1,1,1,0,0,1,1,1,1,5,1,1,1,1], // 6
+            [1,1,1,1,5,1,1,1,1,0,0,1,1,1,1,7,1,1,1,1,1,0,0,1,1,1,1,5,1,1,1,1], // 6  RED LOCKED DOOR at (15,6)
             [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1], // 7
             [1,0,0,0,0,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,0,0,0,1], // 8
             [1,0,0,0,5,0,0,0,1,0,0,0,0,5,0,0,0,0,5,0,0,0,0,1,0,0,0,5,0,0,0,1], // 9
@@ -300,7 +363,8 @@ struct GameWorld {
             items: [
                 // Entry — bullets
                 (.ammoBullets(amount: 20), 2.5, 28.5),
-                // West wing — armory
+                // West wing — armory (RED KEY here)
+                (.keyCard(color: .red), 2.5, 7.5),
                 (.shotgunPickup, 2.5, 23.5),
                 (.ammoShells(amount: 12), 3.5, 14.5),
                 (.armorVest(amount: 50), 2.5, 8.5),
@@ -326,9 +390,9 @@ struct GameWorld {
     // MARK: - Level 3: "Toxin Refinery" — Tech/high-tech theme
     //
     // Design: High-tech facility. Primarily TECH walls (blue/green panels).
-    // Linear main path with side branches. Start top-left, exit bottom-right.
+    // RED KEY in upper section → RED DOOR to mid section → BLUE KEY → BLUE DOOR to final arena.
+    // Start top-left, exit bottom-right.
     // Dense enemy encounters. ~24 enemies, high difficulty.
-    // Exit portal clearly visible at bottom-right corner.
 
     private static func level3Data() -> LevelData {
         // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal
@@ -349,14 +413,14 @@ struct GameWorld {
             [3,3,3,3,3,3,3,3,3,3,3,3,0,0,0,3,0,0,3,0,0,3,0,0,3,0,0,0,3,3,3,3], // 12
             [3,3,3,3,3,3,3,3,0,0,0,3,0,0,0,3,0,0,3,0,0,0,0,0,3,0,0,0,0,0,0,3], // 13
             [3,0,0,0,0,0,0,3,0,0,0,3,3,3,3,3,0,0,3,0,0,0,0,0,3,0,0,0,0,0,0,3], // 14
-            [3,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,3,3,3,4,3,3,3,0,0,0,3,0,0,3], // 15
+            [3,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,3,3,3,7,3,3,3,0,0,0,3,0,0,3], // 15  RED LOCKED DOOR at (21,15)
             [3,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3], // 16
             [3,0,0,3,0,0,0,3,3,3,3,4,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,3], // 17
             [3,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,3,3,3,3,3,3,3,3,0,0,0,3], // 18
             [3,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,3], // 19
             [3,3,3,3,3,3,3,0,0,0,3,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,0,0,3,0,0,3], // 20
             [3,3,3,3,3,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,3], // 21
-            [3,0,0,0,3,0,0,0,0,0,0,0,0,0,3,3,3,4,3,3,3,0,0,3,0,0,0,3,0,0,0,3], // 22
+            [3,0,0,0,3,0,0,0,0,0,0,0,0,0,3,3,3,8,3,3,3,0,0,3,0,0,0,3,0,0,0,3], // 22  BLUE LOCKED DOOR at (17,22)
             [3,0,0,0,4,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,3], // 23
             [3,0,0,0,3,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,3], // 24
             [3,0,0,0,3,3,3,3,3,3,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,3], // 25
@@ -416,12 +480,14 @@ struct GameWorld {
                 // Side room — shotgun
                 (.shotgunPickup, 2.5, 14.5),
                 (.ammoShells(amount: 8), 5.5, 14.5),
-                // Open courtyard
+                // Open courtyard — RED KEY here
+                (.keyCard(color: .red), 29.5, 4.5),
                 (.healthPack(amount: 50), 25.5, 4.5),
                 (.ammoBullets(amount: 30), 29.5, 7.5),
                 // Toxic vault — armor
                 (.armorVest(amount: 50), 21.5, 10.5),
-                // Central gallery
+                // Central gallery — BLUE KEY here
+                (.keyCard(color: .blue), 14.5, 16.5),
                 (.healthPack(amount: 25), 12.5, 16.5),
                 (.ammoShells(amount: 12), 4.5, 19.5),
                 // Lower passages

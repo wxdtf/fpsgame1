@@ -9,14 +9,63 @@ struct HUDView: View {
     let viewModel: GameViewModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Crosshair
-            Spacer()
-            crosshair
-            Spacer()
+        ZStack {
+            VStack(spacing: 0) {
+                // Crosshair
+                Spacer()
+                crosshair
+                Spacer()
 
-            // Bottom status bar
-            statusBar
+                // Bottom status bar
+                statusBar
+            }
+
+            // Level name overlay (top center, fades out)
+            if viewModel.levelNameOpacity > 0 {
+                VStack {
+                    Text(viewModel.levelName)
+                        .font(.system(size: 22, weight: .black, design: .monospaced))
+                        .foregroundColor(.green)
+                        .shadow(color: .black, radius: 4, x: 2, y: 2)
+                        .opacity(viewModel.levelNameOpacity)
+                        .padding(.top, 30)
+                    Spacer()
+                }
+            }
+
+            // Minimap (top-right corner)
+            if let world = viewModel.currentWorld {
+                VStack {
+                    HStack {
+                        Spacer()
+                        MinimapView(
+                            playerX: viewModel.playerX,
+                            playerY: viewModel.playerY,
+                            playerAngle: viewModel.playerAngle,
+                            world: world,
+                            exploredTiles: viewModel.exploredTiles,
+                            worldWidth: viewModel.worldWidth,
+                            enemyPositions: viewModel.enemyPositions,
+                            itemPositions: viewModel.itemPositions
+                        )
+                        .padding(.top, 8)
+                        .padding(.trailing, 8)
+                    }
+                    Spacer()
+                }
+            }
+
+            // Status message overlay
+            if !viewModel.statusMessage.isEmpty {
+                VStack {
+                    Spacer()
+                    Text(viewModel.statusMessage)
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundColor(.red)
+                        .shadow(color: .black, radius: 2)
+                        .padding(.bottom, 80)
+                }
+            }
         }
     }
 
@@ -43,7 +92,7 @@ struct HUDView: View {
 
             // Face
             faceView
-                .frame(width: 52, height: 52)
+                .frame(width: 64, height: 64)
                 .padding(.horizontal, 8)
 
             // Armor section
@@ -61,7 +110,7 @@ struct HUDView: View {
                     .foregroundColor(.white)
 
                 // Weapon slots
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     Text("1")
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundColor(viewModel.currentWeaponName == "FIST" ? .yellow : .gray)
@@ -71,6 +120,20 @@ struct HUDView: View {
                     Text("3")
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundColor(viewModel.currentWeaponName == "SHOTGUN" ? .yellow : .gray)
+                    Text("4")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(viewModel.currentWeaponName == "CHAINGUN" ? .yellow : .gray)
+                }
+
+                // Key indicators
+                if !viewModel.heldKeys.isEmpty {
+                    HStack(spacing: 2) {
+                        ForEach(viewModel.heldKeys, id: \.self) { key in
+                            Circle()
+                                .fill(key == "R" ? Color.red : key == "B" ? Color.blue : Color.yellow)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
                 }
             }
             .frame(width: 80)
@@ -107,7 +170,7 @@ struct HUDView: View {
     private var faceView: some View {
         Canvas { context, size in
             let pixels = viewModel.faceFramePixels
-            let faceSize = 24
+            let faceSize = 48
             let pixelW = size.width / CGFloat(faceSize)
             let pixelH = size.height / CGFloat(faceSize)
 
@@ -138,6 +201,10 @@ struct MinimapView: View {
     let playerY: Double
     let playerAngle: Double
     let world: GameWorld
+    let exploredTiles: Set<Int>
+    let worldWidth: Int
+    let enemyPositions: [(x: Double, y: Double, isDead: Bool)]
+    let itemPositions: [(x: Double, y: Double, collected: Bool)]
 
     var body: some View {
         Canvas { context, size in
@@ -145,7 +212,7 @@ struct MinimapView: View {
             let centerX = size.width / 2
             let centerY = size.height / 2
 
-            // Draw visible tiles around player
+            // Draw explored tiles around player (fog of war)
             let viewRadius = 10
             let startTileX = max(0, Int(playerX) - viewRadius)
             let endTileX = min(world.width - 1, Int(playerX) + viewRadius)
@@ -154,24 +221,61 @@ struct MinimapView: View {
 
             for ty in startTileY...endTileY {
                 for tx in startTileX...endTileX {
+                    // Only show explored tiles
+                    let tileKey = ty * worldWidth + tx
+                    guard exploredTiles.contains(tileKey) else { continue }
+
                     let tile = world.tileAt(x: tx, y: ty)
-                    guard tile != .empty else { continue }
 
                     let screenX = centerX + (CGFloat(tx) - CGFloat(playerX)) * scale
                     let screenY = centerY + (CGFloat(ty) - CGFloat(playerY)) * scale
                     let rect = CGRect(x: screenX, y: screenY, width: scale, height: scale)
 
-                    let color: Color
-                    switch tile {
-                    case .brickWall, .brickTorch: color = Color(red: 0.5, green: 0.2, blue: 0.1)
-                    case .metalWall: color = .gray
-                    case .techWall: color = Color(red: 0.1, green: 0.3, blue: 0.5)
-                    case .door: color = .yellow
-                    case .exitPortal: color = Color(red: 0.0, green: 1.0, blue: 0.3)
-                    case .empty: color = .clear
+                    if tile == .empty {
+                        // Explored empty tiles shown as very dark (walkable floor)
+                        context.fill(Path(rect), with: .color(Color(white: 0.12)))
+                    } else {
+                        let color: Color
+                        switch tile {
+                        case .brickWall, .brickTorch: color = Color(red: 0.5, green: 0.2, blue: 0.1)
+                        case .metalWall: color = .gray
+                        case .techWall: color = Color(red: 0.1, green: 0.3, blue: 0.5)
+                        case .door: color = .yellow
+                        case .exitPortal: color = Color(red: 0.0, green: 1.0, blue: 0.3)
+                        case .lockedDoorRed: color = .red
+                        case .lockedDoorBlue: color = .blue
+                        case .lockedDoorYellow: color = Color(red: 0.9, green: 0.8, blue: 0.0)
+                        case .damageFloor: color = Color(red: 0.2, green: 0.5, blue: 0.1).opacity(0.5)
+                        case .empty: color = .clear
+                        }
+                        context.fill(Path(rect), with: .color(color))
                     }
-                    context.fill(Path(rect), with: .color(color))
                 }
+            }
+
+            // Draw items as yellow dots (only on explored tiles)
+            for item in itemPositions where !item.collected {
+                let tileKey = Int(item.y) * worldWidth + Int(item.x)
+                guard exploredTiles.contains(tileKey) else { continue }
+                let sx = centerX + (CGFloat(item.x) - CGFloat(playerX)) * scale
+                let sy = centerY + (CGFloat(item.y) - CGFloat(playerY)) * scale
+                let dotRect = CGRect(x: sx - 1.5, y: sy - 1.5, width: 3, height: 3)
+                context.fill(Path(ellipseIn: dotRect), with: .color(.yellow))
+            }
+
+            // Draw enemies as red dots (only visible ones near player)
+            let enemyVisRadius = 6.0
+            for enemy in enemyPositions where !enemy.isDead {
+                let dx = enemy.x - playerX
+                let dy = enemy.y - playerY
+                let dist = sqrt(dx * dx + dy * dy)
+                guard dist < enemyVisRadius else { continue }
+                let tileKey = Int(enemy.y) * worldWidth + Int(enemy.x)
+                guard exploredTiles.contains(tileKey) else { continue }
+                let sx = centerX + (CGFloat(enemy.x) - CGFloat(playerX)) * scale
+                let sy = centerY + (CGFloat(enemy.y) - CGFloat(playerY)) * scale
+                let dotRect = CGRect(x: sx - 1.5, y: sy - 1.5, width: 3, height: 3)
+                context.fill(Path(ellipseIn: dotRect), with: .color(.red))
             }
 
             // Player dot

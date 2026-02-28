@@ -11,6 +11,9 @@ enum ItemType {
     case ammoBullets(amount: Int)
     case ammoShells(amount: Int)
     case shotgunPickup
+    case chaingunPickup
+    case keyCard(color: KeyColor)
+    case berserkPack
 }
 
 struct Item: Identifiable {
@@ -42,6 +45,14 @@ struct Item: Identifiable {
         case .ammoBullets: return 2
         case .ammoShells: return 3
         case .shotgunPickup: return 4
+        case .chaingunPickup: return 5
+        case .keyCard(let color):
+            switch color {
+            case .red: return 6
+            case .blue: return 7
+            case .yellow: return 8
+            }
+        case .berserkPack: return 9
         }
     }
 }

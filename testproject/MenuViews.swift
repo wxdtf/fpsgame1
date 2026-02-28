@@ -64,7 +64,7 @@ struct TitleScreenView: View {
                         controlHint("MOUSE / TRACKPAD", description: "Look around")
                         controlHint("SPACE / CLICK", description: "Shoot")
                         controlHint("E", description: "Open doors")
-                        controlHint("1 2 3", description: "Switch weapons")
+                        controlHint("1 2 3 4", description: "Switch weapons")
                         controlHint("SHIFT", description: "Sprint")
                         controlHint("ESC", description: "Pause")
                     }
@@ -203,6 +203,85 @@ struct VictoryScreenView: View {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+struct BriefingScreenView: View {
+    let level: Int
+    let onStart: () -> Void
+    @State private var visibleLines: Int = 0
+    @State private var showPrompt: Bool = false
+    @State private var lineTimer: Timer?
+
+    private var briefing: (title: String, lines: [String]) {
+        GameWorld.briefingText(for: level)
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Spacer()
+
+                Text(briefing.title)
+                    .font(.system(size: 28, weight: .black, design: .monospaced))
+                    .foregroundColor(.green)
+                    .shadow(color: .green.opacity(0.3), radius: 8)
+                    .padding(.bottom, 12)
+
+                ForEach(0..<min(visibleLines, briefing.lines.count), id: \.self) { i in
+                    Text(briefing.lines[i])
+                        .font(.system(size: 16, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(red: 0.0, green: 0.85, blue: 0.0))
+                }
+
+                if showPrompt {
+                    Text("PRESS ENTER TO BEGIN")
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.top, 20)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 100)
+        }
+        .onAppear {
+            visibleLines = 0
+            showPrompt = false
+            let t = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+                if visibleLines < briefing.lines.count {
+                    visibleLines += 1
+                } else {
+                    showPrompt = true
+                    timer.invalidate()
+                }
+            }
+            lineTimer = t
+        }
+        .onDisappear {
+            lineTimer?.invalidate()
+        }
+        .onTapGesture {
+            if showPrompt {
+                onStart()
+            } else {
+                // Skip typewriter — show all immediately
+                lineTimer?.invalidate()
+                visibleLines = briefing.lines.count
+                showPrompt = true
+            }
+        }
+        .background(KeyPressHandler(onEnter: {
+            if showPrompt {
+                onStart()
+            } else {
+                lineTimer?.invalidate()
+                visibleLines = briefing.lines.count
+                showPrompt = true
+            }
+        }))
     }
 }
 

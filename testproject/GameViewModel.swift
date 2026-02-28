@@ -21,6 +21,19 @@ final class GameViewModel {
     var currentLevel: Int = 1
     var recentDamage: Bool = false
     var recentPickup: Bool = false
+    var statusMessage: String = ""
+    var heldKeys: [String] = []
+    var isBerserk: Bool = false
+    var levelName: String = ""
+    var levelNameOpacity: Double = 0
+    var exploredTiles: Set<Int> = []
+    var worldWidth: Int = 0
+    var enemyPositions: [(x: Double, y: Double, isDead: Bool)] = []
+    var itemPositions: [(x: Double, y: Double, collected: Bool)] = []
+    var playerX: Double = 0
+    var playerY: Double = 0
+    var playerAngle: Double = 0
+    var currentWorld: GameWorld?
 
     let inputManager = InputManager()
 
@@ -37,31 +50,65 @@ final class GameViewModel {
     private var prevKillCount: Int = 0
     private var prevPickupFlash: Double = 0
     private var prevEscapeState: Bool = false
+    private var prevBobPhase: Double = 0
+    private var prevWeaponSwitching: Bool = false
+    private var prevGameState: GameStateType = .menu
+
+    func showBriefing() {
+        // If no engine yet (first time from menu), create one to know the level
+        if gameEngine == nil {
+            let engine = GameEngine()
+            self.gameEngine = engine
+        }
+        gameState = .briefing
+        currentLevel = gameEngine?.currentLevel ?? 1
+    }
+
+    /// Called when player presses enter on the briefing screen
+    func startFromBriefing() {
+        if timer == nil {
+            // First start — need full initialization
+            startGame()
+        } else {
+            // Returning from level-advance briefing — just resume
+            beginAfterBriefing()
+        }
+    }
 
     func startGame() {
-        let engine = GameEngine()
+        guard let engine = gameEngine else { return }
         engine.state = .playing
-        self.gameEngine = engine
+        gameState = .playing  // Explicitly exit briefing state
 
         // Try Metal renderer first, fall back to CPU
-        if let mr = MetalRenderer() {
-            metalRenderer = mr
+        if metalRenderer == nil && cpuRenderer == nil {
+            if let mr = MetalRenderer() {
+                metalRenderer = mr
+                mr.uploadWorldData(world: engine.world)
+                useGPU = true
+            } else {
+                cpuRenderer = Renderer()
+                useGPU = false
+            }
+        } else if useGPU, let mr = metalRenderer {
             mr.uploadWorldData(world: engine.world)
-            useGPU = true
-        } else {
-            cpuRenderer = Renderer()
-            useGPU = false
         }
 
-        doomFace = DoomFace()
+        if doomFace == nil {
+            doomFace = DoomFace()
+        }
 
         lastFrameTime = CACurrentMediaTime()
         prevPlayerHealth = engine.player.health
         prevKillCount = 0
         prevPickupFlash = 0
+        prevBobPhase = 0
+        prevWeaponSwitching = false
+        prevGameState = .playing
 
         updateUIState()
         startGameLoop()
+        audio.playAmbientDrone()
     }
 
     func restartGame() {
@@ -73,14 +120,35 @@ final class GameViewModel {
         inputManager.mouseClicked = false
 
         gameEngine?.restart()
+        gameState = .playing
         if useGPU, let engine = gameEngine {
             metalRenderer?.uploadWorldData(world: engine.world)
         }
         prevPlayerHealth = gameEngine?.player.health ?? 100
         prevKillCount = 0
         prevPickupFlash = 0
+        prevBobPhase = 0
+        prevWeaponSwitching = false
+        prevGameState = .playing
         lastFrameTime = CACurrentMediaTime()
         updateUIState()
+        audio.playAmbientDrone()
+    }
+
+    func restartWithBriefing() {
+        // Clear any lingering input
+        inputManager.keys.removeAll()
+        inputManager.mouseDeltaX = 0
+        inputManager.mouseDeltaY = 0
+        inputManager.mouseHeld = false
+        inputManager.mouseClicked = false
+
+        // Reset level but keep engine paused during briefing
+        gameEngine?.restart()
+        gameEngine?.state = .paused
+        audio.stopAmbientDrone()
+        gameState = .briefing
+        currentLevel = gameEngine?.currentLevel ?? 1
     }
 
     func advanceToNextLevel() {
@@ -92,19 +160,37 @@ final class GameViewModel {
         inputManager.mouseClicked = false
 
         gameEngine?.nextLevel()
-        if useGPU, let engine = gameEngine {
+        // Pause engine during briefing so it doesn't update in background
+        gameEngine?.state = .paused
+        audio.stopAmbientDrone()
+        // Show briefing before starting the next level
+        gameState = .briefing
+        currentLevel = gameEngine?.currentLevel ?? 1
+    }
+
+    /// Called from briefing screen when player presses enter to begin next level
+    func beginAfterBriefing() {
+        guard let engine = gameEngine else { return }
+        engine.state = .playing  // Resume engine from paused
+        gameState = .playing  // Explicitly exit briefing state
+        if useGPU {
             metalRenderer?.uploadWorldData(world: engine.world)
         }
-        prevPlayerHealth = gameEngine?.player.health ?? 100
+        prevPlayerHealth = engine.player.health
         prevKillCount = 0
         prevPickupFlash = 0
+        prevBobPhase = 0
+        prevWeaponSwitching = false
+        prevGameState = .playing
         lastFrameTime = CACurrentMediaTime()
         updateUIState()
+        audio.playAmbientDrone()
     }
 
     func stopGame() {
         timer?.cancel()
         timer = nil
+        audio.stopAmbientDrone()
     }
 
     func togglePause() {
@@ -156,30 +242,67 @@ final class GameViewModel {
         if engine.state == .playing {
             let input = inputManager.getInputState()
 
-            // Play sounds based on state changes
+            // Snapshot state before update
             let prevHealth = prevPlayerHealth
             let prevKills = prevKillCount
             let prevPickup = prevPickupFlash
+            let oldBobPhase = engine.player.bobPhase
 
             engine.update(deltaTime: deltaTime, input: input)
 
-            // Sound effects — use the engine's flag so sound plays on the exact frame of firing
+            // --- Sound effects ---
+
+            // Weapon fire
             if let firedWeapon = engine.firedWeaponThisFrame {
                 switch firedWeapon {
                 case .pistol: audio.playGunshot()
                 case .shotgun: audio.playShotgun()
                 case .fist: audio.playPunch()
+                case .chaingun: audio.playGunshot()
                 }
             }
 
+            // Footsteps: detect half-cycle crossings of bobPhase (every π)
+            if engine.player.isMoving {
+                let oldHalf = Int(oldBobPhase / .pi)
+                let newHalf = Int(engine.player.bobPhase / .pi)
+                if newHalf > oldHalf {
+                    audio.playFootstep()
+                }
+            }
+
+            // Weapon switch: edge detect isSwitching going true
+            if engine.player.weaponState.isSwitching && !prevWeaponSwitching {
+                audio.playWeaponSwitch()
+            }
+            prevWeaponSwitching = engine.player.weaponState.isSwitching
+
+            // Door opened
+            if engine.doorOpenedThisFrame {
+                audio.playDoorOpen()
+            }
+
+            // Enemy alerted
+            if engine.enemyAlertedThisFrame {
+                audio.playEnemyAlert()
+            }
+
+            // Enemy hurt (but not killed)
+            if engine.enemyHurtThisFrame {
+                audio.playEnemyPain()
+            }
+
+            // Player hurt
             if engine.player.health < prevHealth {
                 audio.playHurt()
             }
 
+            // Enemy killed
             if engine.killCount > prevKills {
                 audio.playEnemyDeath()
             }
 
+            // Item pickup
             if engine.pickupFlashTimer > prevPickup {
                 audio.playPickup()
             }
@@ -189,14 +312,41 @@ final class GameViewModel {
             prevPickupFlash = engine.pickupFlashTimer
         }
 
+        // State transition sounds
+        let currentState = engine.state
+        if currentState != prevGameState {
+            switch currentState {
+            case .levelComplete:
+                audio.stopAmbientDrone()
+                audio.playLevelComplete()
+            case .dead:
+                audio.stopAmbientDrone()
+            case .paused:
+                audio.stopAmbientDrone()
+            case .playing where prevGameState == .paused:
+                audio.playAmbientDrone()
+            default:
+                break
+            }
+            prevGameState = currentState
+        }
+
         // Always update UI state so SwiftUI sees state transitions (dead/levelComplete)
         updateUIState()
 
-        // Skip rendering when not actively playing (paused frame already showing, or transitioned away)
-        guard engine.state == .playing else { return }
+        // Allow rendering during death animation too
+        let isDying = engine.deathAnimTimer > 0 && engine.state == .playing
+        guard engine.state == .playing || isDying else { return }
 
         // Render
         autoreleasepool {
+            // Screen shake: apply angle offset before rendering
+            var angleOffset = 0.0
+            if engine.screenShakeTimer > 0 {
+                angleOffset = sin(engine.elapsedTime * 50) * engine.screenShakeIntensity * 0.03
+                engine.player.angle += angleOffset
+            }
+
             // Get the active pixel buffer (GPU or CPU path)
             let activePixelBuffer: PixelBuffer
 
@@ -206,7 +356,8 @@ final class GameViewModel {
                     world: engine.world,
                     enemies: engine.enemies,
                     items: engine.items,
-                    projectiles: engine.projectiles
+                    projectiles: engine.projectiles,
+                    elapsedTime: engine.elapsedTime
                 )
                 activePixelBuffer = mr.pixelBuffer
             } else if let cr = cpuRenderer {
@@ -215,19 +366,35 @@ final class GameViewModel {
                     world: engine.world,
                     enemies: engine.enemies,
                     items: engine.items,
-                    projectiles: engine.projectiles
+                    projectiles: engine.projectiles,
+                    elapsedTime: engine.elapsedTime
                 )
                 activePixelBuffer = cr.pixelBuffer
             } else {
                 return
             }
 
-            // Damage flash
+            // Restore angle after rendering
+            if angleOffset != 0 {
+                engine.player.angle -= angleOffset
+            }
+
+            // Muzzle flash — brief white brightness
+            if engine.muzzleFlashTimer > 0 {
+                let intensity = min(0.3, engine.muzzleFlashTimer * 6.0)
+                activePixelBuffer.applyTint(
+                    color: PixelBuffer.makeColor(r: 255, g: 240, b: 200),
+                    intensity: intensity
+                )
+            }
+
+            // Directional damage indicator
             if engine.damageFlashTimer > 0 {
                 let intensity = min(0.5, engine.damageFlashTimer)
-                activePixelBuffer.applyTint(
-                    color: PixelBuffer.makeColor(r: 255, g: 0, b: 0),
-                    intensity: intensity
+                activePixelBuffer.applyDirectionalDamage(
+                    intensity: intensity,
+                    direction: engine.lastDamageDirection,
+                    playerAngle: engine.player.angle
                 )
             }
 
@@ -238,6 +405,20 @@ final class GameViewModel {
                     color: PixelBuffer.makeColor(r: 255, g: 255, b: 0),
                     intensity: intensity
                 )
+            }
+
+            // Berserk red tint
+            if engine.player.isBerserk {
+                activePixelBuffer.applyTint(
+                    color: PixelBuffer.makeColor(r: 200, g: 0, b: 0),
+                    intensity: 0.08
+                )
+            }
+
+            // Death screen effect
+            if engine.deathAnimTimer > 0 && engine.player.isDead {
+                let progress = 1.0 - engine.deathAnimTimer / 0.5
+                activePixelBuffer.applyDeathEffect(progress: progress)
             }
 
             // Hit marker (X at center of screen)
@@ -267,6 +448,8 @@ final class GameViewModel {
 
     private func updateUIState() {
         guard let engine = gameEngine else { return }
+        // Don't overwrite briefing state — it's managed by the view model
+        if gameState == .briefing { return }
         gameState = engine.state
         health = engine.player.health
         armor = engine.player.armor
@@ -281,7 +464,33 @@ final class GameViewModel {
         case .fist: currentWeaponName = "FIST"
         case .pistol: currentWeaponName = "PISTOL"
         case .shotgun: currentWeaponName = "SHOTGUN"
+        case .chaingun: currentWeaponName = "CHAINGUN"
         }
+
+        statusMessage = engine.statusMessageTimer > 0 ? engine.statusMessage : ""
+        isBerserk = engine.player.isBerserk
+
+        // Level name display
+        if engine.levelNameTimer > 0 {
+            levelName = GameWorld.briefingText(for: engine.currentLevel).title
+            levelNameOpacity = min(1.0, engine.levelNameTimer * 2)
+        } else {
+            levelNameOpacity = 0
+        }
+        heldKeys = []
+        if engine.player.keys.contains(.red) { heldKeys.append("R") }
+        if engine.player.keys.contains(.blue) { heldKeys.append("B") }
+        if engine.player.keys.contains(.yellow) { heldKeys.append("Y") }
+
+        // Fog of war / minimap data
+        exploredTiles = engine.exploredTiles
+        worldWidth = engine.world.width
+        enemyPositions = engine.enemies.map { (x: $0.x, y: $0.y, isDead: $0.isDead) }
+        itemPositions = engine.items.map { (x: $0.x, y: $0.y, collected: $0.isCollected) }
+        playerX = engine.player.x
+        playerY = engine.player.y
+        playerAngle = engine.player.angle
+        currentWorld = engine.world
 
         let ammoType = WeaponDefinition.forType(engine.player.currentWeapon).ammoType
         if let type = ammoType {
@@ -293,13 +502,15 @@ final class GameViewModel {
 
     var faceFramePixels: [UInt32] {
         guard let face = doomFace, let engine = gameEngine else {
-            return [UInt32](repeating: 0xFF808080, count: 24 * 24)
+            return [UInt32](repeating: 0xFF808080, count: 48 * 48)
         }
         let frameIdx = face.frameForState(
             health: engine.player.health,
             recentDamage: engine.damageFlashTimer > 0.1,
             damageDir: engine.lastDamageDirection,
-            pickupGrin: engine.pickupFlashTimer > 0
+            pickupGrin: engine.pickupFlashTimer > 0,
+            elapsedTime: engine.elapsedTime,
+            playerAngle: engine.player.angle
         )
         return face.frames[min(frameIdx, face.frames.count - 1)]
     }

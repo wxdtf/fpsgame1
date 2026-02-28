@@ -22,6 +22,7 @@ final class SpriteAssets {
     let pistolSprites: SpriteSheet
     let shotgunSprites: SpriteSheet
     let fistSprites: SpriteSheet
+    let chaingunSprites: SpriteSheet
 
     let itemSprites: SpriteSheet
     let projectileSprites: SpriteSheet
@@ -33,6 +34,7 @@ final class SpriteAssets {
         pistolSprites = Self.generatePistolSprites()
         shotgunSprites = Self.generateShotgunSprites()
         fistSprites = Self.generateFistSprites()
+        chaingunSprites = Self.generateChaingunSprites()
         itemSprites = Self.generateItemSprites()
         projectileSprites = Self.generateProjectileSprites()
     }
@@ -50,6 +52,7 @@ final class SpriteAssets {
         case .fist: return fistSprites
         case .pistol: return pistolSprites
         case .shotgun: return shotgunSprites
+        case .chaingun: return chaingunSprites
         }
     }
 
@@ -703,6 +706,55 @@ final class SpriteAssets {
         return SpriteSheet(frames: frames, width: w, height: h)
     }
 
+    // MARK: - Chaingun Sprites
+
+    private static func generateChaingunSprites() -> SpriteSheet {
+        let w = 192, h = 192
+        var frames: [[UInt32]] = []
+
+        // 3 frames: idle, fire-left, fire-right (alternating barrel flash)
+        for frame in 0..<3 {
+            var px = [UInt32](repeating: T, count: w * h)
+
+            let gunMetal = c(80, 80, 85)
+            let gunDark = c(55, 55, 60)
+            let gunLight = c(100, 100, 105)
+            let wood = c(100, 60, 25)
+            let woodDark = c(80, 50, 20)
+
+            // Dual barrels
+            fillRect(&px, w: w, h: h, x: 82, y: 40, rw: 8, rh: 80, color: gunDark)
+            fillRect(&px, w: w, h: h, x: 83, y: 42, rw: 6, rh: 76, color: gunMetal)
+            fillRect(&px, w: w, h: h, x: 100, y: 40, rw: 8, rh: 80, color: gunDark)
+            fillRect(&px, w: w, h: h, x: 101, y: 42, rw: 6, rh: 76, color: gunMetal)
+
+            // Barrel clamp
+            fillRect(&px, w: w, h: h, x: 80, y: 70, rw: 32, rh: 6, color: gunDark)
+            fillRect(&px, w: w, h: h, x: 80, y: 100, rw: 32, rh: 6, color: gunDark)
+
+            // Body/receiver
+            fillRect(&px, w: w, h: h, x: 75, y: 115, rw: 42, rh: 20, color: gunMetal)
+            fillRect(&px, w: w, h: h, x: 77, y: 117, rw: 38, rh: 16, color: gunLight)
+
+            // Handle/grip
+            fillRect(&px, w: w, h: h, x: 88, y: 135, rw: 16, rh: 45, color: wood)
+            fillRect(&px, w: w, h: h, x: 90, y: 137, rw: 12, rh: 41, color: woodDark)
+
+            // Muzzle flash on fire frames
+            if frame == 1 {
+                fillCircle(&px, w: w, h: h, cx: 86, cy: 35, r: 8, color: c(255, 200, 50))
+                fillCircle(&px, w: w, h: h, cx: 86, cy: 35, r: 5, color: c(255, 255, 150))
+            } else if frame == 2 {
+                fillCircle(&px, w: w, h: h, cx: 104, cy: 35, r: 8, color: c(255, 200, 50))
+                fillCircle(&px, w: w, h: h, cx: 104, cy: 35, r: 5, color: c(255, 255, 150))
+            }
+
+            addOutline(&px, w: w, h: h, color: c(30, 30, 32))
+            frames.append(px)
+        }
+        return SpriteSheet(frames: frames, width: w, height: h)
+    }
+
     // MARK: - Item Sprites
 
     private static func generateItemSprites() -> SpriteSheet {
@@ -757,6 +809,53 @@ final class SpriteAssets {
         fillRect(&sg, w: w, h: h, x: 13, y: 9, rw: 5, rh: 3, color: c(90, 55, 22))
         addOutline(&sg, w: w, h: h, color: c(30, 30, 32))
         frames.append(sg)
+
+        // Chaingun pickup
+        var cg = [UInt32](repeating: T, count: w * h)
+        fillRect(&cg, w: w, h: h, x: 1, y: 7, rw: 18, rh: 3, color: c(60, 60, 65))
+        fillRect(&cg, w: w, h: h, x: 1, y: 10, rw: 18, rh: 3, color: c(60, 60, 65))
+        fillRect(&cg, w: w, h: h, x: 1, y: 8, rw: 18, rh: 1, color: c(90, 90, 95))
+        fillRect(&cg, w: w, h: h, x: 1, y: 11, rw: 18, rh: 1, color: c(90, 90, 95))
+        fillRect(&cg, w: w, h: h, x: 14, y: 7, rw: 5, rh: 6, color: c(100, 60, 25))
+        addOutline(&cg, w: w, h: h, color: c(25, 25, 28))
+        frames.append(cg)
+
+        // Key card - Red
+        var kr = [UInt32](repeating: T, count: w * h)
+        fillRect(&kr, w: w, h: h, x: 4, y: 4, rw: 12, rh: 12, color: c(200, 30, 30))
+        fillRect(&kr, w: w, h: h, x: 5, y: 5, rw: 10, rh: 10, color: c(240, 50, 50))
+        fillCircle(&kr, w: w, h: h, cx: 10, cy: 8, r: 2, color: c(255, 180, 180))
+        fillRect(&kr, w: w, h: h, x: 8, y: 10, rw: 5, rh: 2, color: c(255, 180, 180))
+        addOutline(&kr, w: w, h: h, color: c(100, 15, 15))
+        frames.append(kr)
+
+        // Key card - Blue
+        var kb = [UInt32](repeating: T, count: w * h)
+        fillRect(&kb, w: w, h: h, x: 4, y: 4, rw: 12, rh: 12, color: c(30, 60, 200))
+        fillRect(&kb, w: w, h: h, x: 5, y: 5, rw: 10, rh: 10, color: c(50, 80, 240))
+        fillCircle(&kb, w: w, h: h, cx: 10, cy: 8, r: 2, color: c(180, 200, 255))
+        fillRect(&kb, w: w, h: h, x: 8, y: 10, rw: 5, rh: 2, color: c(180, 200, 255))
+        addOutline(&kb, w: w, h: h, color: c(15, 30, 100))
+        frames.append(kb)
+
+        // Key card - Yellow
+        var ky = [UInt32](repeating: T, count: w * h)
+        fillRect(&ky, w: w, h: h, x: 4, y: 4, rw: 12, rh: 12, color: c(200, 180, 30))
+        fillRect(&ky, w: w, h: h, x: 5, y: 5, rw: 10, rh: 10, color: c(240, 220, 50))
+        fillCircle(&ky, w: w, h: h, cx: 10, cy: 8, r: 2, color: c(255, 255, 180))
+        fillRect(&ky, w: w, h: h, x: 8, y: 10, rw: 5, rh: 2, color: c(255, 255, 180))
+        addOutline(&ky, w: w, h: h, color: c(100, 90, 15))
+        frames.append(ky)
+
+        // Berserk pack
+        var bp = [UInt32](repeating: T, count: w * h)
+        fillRect(&bp, w: w, h: h, x: 3, y: 4, rw: 14, rh: 12, color: c(60, 60, 60))
+        fillRect(&bp, w: w, h: h, x: 4, y: 5, rw: 12, rh: 10, color: c(80, 10, 10))
+        // Skull symbol
+        fillCircle(&bp, w: w, h: h, cx: 10, cy: 9, r: 3, color: c(200, 200, 200))
+        fillRect(&bp, w: w, h: h, x: 8, y: 11, rw: 4, rh: 2, color: c(200, 200, 200))
+        addOutline(&bp, w: w, h: h, color: c(30, 5, 5))
+        frames.append(bp)
 
         return SpriteSheet(frames: frames, width: w, height: h)
     }

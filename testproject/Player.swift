@@ -30,9 +30,14 @@ struct Player {
     var bobPhase: Double = 0
     var bobAmount: Double = 0
     var isMoving: Bool = false
+    var isSprinting: Bool = false
 
     // Keys
     var keys: Set<KeyColor> = []
+
+    // Powerups
+    var berserkTimer: Double = 0
+    var isBerserk: Bool { berserkTimer > 0 }
 
     mutating func rotate(by amount: Double) {
         angle += amount
@@ -40,16 +45,20 @@ struct Player {
         if angle >= .pi * 2 { angle -= .pi * 2 }
     }
 
-    mutating func move(forward: Double, strafe: Double, deltaTime: Double, world: GameWorld) {
-        let speed = GameConstants.playerMoveSpeed * deltaTime
+    mutating func move(forward: Double, strafe: Double, deltaTime: Double, world: GameWorld, sprint: Bool = false) {
+        let sprintMult = sprint ? 1.6 : 1.0
+        let speed = GameConstants.playerMoveSpeed * deltaTime * sprintMult
         let moveX = dirX * forward * speed + (-dirY) * strafe * speed
         let moveY = dirY * forward * speed + dirX * strafe * speed
 
         isMoving = abs(forward) > 0.01 || abs(strafe) > 0.01
+        isSprinting = isMoving && sprint
 
         if isMoving {
-            bobPhase += deltaTime * 8.0
-            bobAmount = sin(bobPhase) * 0.03
+            let bobFreq = isSprinting ? 12.0 : 8.0
+            bobPhase += deltaTime * bobFreq
+            let bobAmp = isSprinting ? 0.06 : 0.03
+            bobAmount = sin(bobPhase) * bobAmp
         } else {
             bobAmount *= 0.9
         }

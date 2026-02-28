@@ -36,6 +36,8 @@ final class Renderer {
 
     // Cached torch positions
     private var cachedTorches: [(Double, Double)] = []
+    private var currentTime: Double = 0
+    private var currentWorld: GameWorld?
 
     init() {
         width = GameConstants.renderWidth
@@ -51,12 +53,14 @@ final class Renderer {
         zBuffer.deallocate()
     }
 
-    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = []) {
+    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], elapsedTime: Double = 0) {
         let buf = pixelBuffer.rawPixels
         let n = pixelBuffer.count
         for i in 0..<n { buf[i] = 0xFF000000 }
         for i in 0..<width { zBuffer[i] = Double.infinity }
 
+        currentTime = elapsedTime
+        currentWorld = world
         cachedTorches = findNearbyTorches(world: world, aroundX: player.x, aroundY: player.y)
 
         renderFloorCeiling(player: player)
@@ -112,12 +116,16 @@ final class Renderer {
     @inline(__always)
     private func torchLight(worldX: Double, worldY: Double) -> Double {
         var light = 0.0
+        let t = currentTime
         for i in 0..<cachedTorches.count {
             let dx = worldX - cachedTorches[i].0
             let dy = worldY - cachedTorches[i].1
             let distSq = dx * dx + dy * dy
             if distSq < 16.0 {
-                light += 1.2 / (1.0 + distSq * 0.8)
+                // Flicker: each torch has a unique phase based on its position
+                let phase = cachedTorches[i].0 * 3.0 + cachedTorches[i].1 * 7.0
+                let flicker = 0.8 + 0.2 * sin(t * 8.0 + phase)
+                light += 1.2 * flicker / (1.0 + distSq * 0.8)
             }
         }
         return min(light, 1.5)
@@ -136,6 +144,8 @@ final class Renderer {
         let ppt = texSize * texSize
         let floorOff = TextureAtlas.floor * ppt
         let ceilOff = TextureAtlas.ceiling * ppt
+        let dmgFloorOff = TextureAtlas.damageFloor * ppt
+        let world = currentWorld
 
         let rayDirX0 = player.dirX - player.planeX
         let rayDirY0 = player.dirY - player.planeY
@@ -169,7 +179,14 @@ final class Renderer {
                 let ty = Int(floorY * dTexSize) & texMask
                 let texOff = ty * texSize + tx
 
-                buf[rowOff + x] = Renderer.shadeThenFog(texAtlas[floorOff + texOff], shade: floorShade, fog: fog)
+                // Check if this floor tile is a damage floor for alternate texture
+                let tileOff: Int
+                if let w = world, w.tileAt(x: Int(floorX), y: Int(floorY)) == .damageFloor {
+                    tileOff = dmgFloorOff
+                } else {
+                    tileOff = floorOff
+                }
+                buf[rowOff + x] = Renderer.shadeThenFog(texAtlas[tileOff + texOff], shade: floorShade, fog: fog)
                 buf[ceilRowOff + x] = Renderer.shadeThenFog(texAtlas[ceilOff + texOff], shade: ceilShade, fog: fog)
 
                 floorX += fStepX
@@ -228,7 +245,7 @@ final class Renderer {
 
                 tile = world.tileAt(x: mapX, y: mapY)
 
-                if tile == .door {
+                if tile.isDoor {
                     if let door = world.doors.first(where: { $0.tileX == mapX && $0.tileY == mapY }) {
                         if door.openAmount >= 0.99 {
                             // Fully open — ray passes through
@@ -263,7 +280,7 @@ final class Renderer {
             var wallX = side == 0 ? (player.y + perpWallDist * rayDirY) : (player.x + perpWallDist * rayDirX)
             wallX -= floor(wallX)
             // Offset door texture by open amount for sliding effect
-            if tile == .door {
+            if tile.isDoor {
                 if let door = world.doors.first(where: { $0.tileX == mapX && $0.tileY == mapY }) {
                     // Flip wallX consistent with gap detection
                     if (side == 0 && rayDirX > 0) || (side == 1 && rayDirY > 0) {
@@ -422,8 +439,10 @@ final class Renderer {
         let destH = height / 2
         let destX = (width - destW) / 2
         var destY = height - destH
-        let bobX = Int(sin(player.bobPhase) * 3)
-        let bobY = Int(abs(cos(player.bobPhase)) * 2)
+        let bobMult = player.isMoving ? 1.0 : 0.0
+        let sprintBob = player.isSprinting ? 2.0 : 1.0
+        let bobX = Int(sin(player.bobPhase) * 6 * bobMult * sprintBob)
+        let bobY = Int(abs(cos(player.bobPhase)) * 4 * bobMult * sprintBob)
 
         // Weapon switch animation: drop down then come back up
         if player.weaponState.isSwitching {

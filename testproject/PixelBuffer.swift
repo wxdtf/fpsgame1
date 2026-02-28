@@ -118,6 +118,99 @@ final class PixelBuffer {
         }
     }
 
+    /// Directional damage indicator — red gradient from the edge nearest the damage source
+    func applyDirectionalDamage(intensity: Double, direction: Double, playerAngle: Double) {
+        let relAngle = direction - playerAngle + .pi // offset so 0 = behind, pi = front
+        let normAngle = relAngle - floor(relAngle / (2 * .pi)) * 2 * .pi
+
+        let buf = rawPixels
+        let w = width
+        let h = height
+        let fadeDepth = 0.20 // percentage of screen for gradient
+
+        let tintR: Float = 255.0 * Float(intensity)
+        let tintMul = Float(intensity)
+
+        for y in 0..<h {
+            for x in 0..<w {
+                // Calculate how close this pixel is to the damage edge
+                let nx = Double(x) / Double(w)
+                let ny = Double(y) / Double(h)
+
+                var edgeDist = 1.0 // 0 = at the edge, 1 = far from edge
+
+                // Left edge (damage from left: angle ~= pi/2)
+                if normAngle > 0.5 && normAngle < 2.0 {
+                    edgeDist = min(edgeDist, nx / fadeDepth)
+                }
+                // Right edge (damage from right: angle ~= 3*pi/2)
+                if normAngle > 4.3 && normAngle < 5.8 {
+                    edgeDist = min(edgeDist, (1.0 - nx) / fadeDepth)
+                }
+                // Top edge (damage from front: angle ~= pi)
+                if normAngle > 2.0 && normAngle < 4.3 {
+                    edgeDist = min(edgeDist, ny / fadeDepth)
+                }
+                // Bottom edge (damage from behind: angle ~= 0 or 2pi)
+                if normAngle < 0.5 || normAngle > 5.8 {
+                    edgeDist = min(edgeDist, (1.0 - ny) / fadeDepth)
+                }
+
+                let alpha = Float(max(0.0, 1.0 - edgeDist)) * tintMul
+                if alpha > 0.01 {
+                    let p = buf[y * w + x]
+                    let inv = 1.0 - alpha
+                    let r = Float((p >> 16) & 0xFF) * inv + tintR * alpha
+                    let g = Float((p >> 8) & 0xFF) * inv
+                    let b = Float(p & 0xFF) * inv
+                    buf[y * w + x] = (0xFF << 24)
+                        | (UInt32(min(255.0, r)) << 16)
+                        | (UInt32(min(255.0, g)) << 8)
+                        | UInt32(min(255.0, b))
+                }
+            }
+        }
+    }
+
+    /// Death screen effect — shift pixels down and fill top with dark red
+    func applyDeathEffect(progress: Double) {
+        let buf = rawPixels
+        let w = width
+        let h = height
+        let shiftAmount = Int(progress * Double(h) * 0.3)
+        let darkRed = PixelBuffer.makeColor(r: 40, g: 5, b: 5)
+
+        // Shift pixels down
+        if shiftAmount > 0 {
+            for y in stride(from: h - 1, through: shiftAmount, by: -1) {
+                let srcRow = y - shiftAmount
+                for x in 0..<w {
+                    buf[y * w + x] = buf[srcRow * w + x]
+                }
+            }
+            // Fill top rows with dark red
+            for y in 0..<shiftAmount {
+                for x in 0..<w {
+                    buf[y * w + x] = darkRed
+                }
+            }
+        }
+
+        // Red tint overlay
+        let tintIntensity = Float(progress * 0.4)
+        let inv = 1.0 - tintIntensity
+        for i in 0..<(w * h) {
+            let p = buf[i]
+            let r = Float((p >> 16) & 0xFF) * inv + 180.0 * tintIntensity
+            let g = Float((p >> 8) & 0xFF) * inv
+            let b = Float(p & 0xFF) * inv
+            buf[i] = (0xFF << 24)
+                | (UInt32(min(255.0, r)) << 16)
+                | (UInt32(min(255.0, g)) << 8)
+                | UInt32(min(255.0, b))
+        }
+    }
+
     /// Zero-copy CGImage creation — the pixel data is referenced directly, not copied
     func toCGImage() -> CGImage? {
         let byteCount = count * 4

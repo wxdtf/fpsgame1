@@ -9,6 +9,7 @@ enum WeaponType: Hashable, CaseIterable {
     case fist
     case pistol
     case shotgun
+    case chaingun
 }
 
 enum AmmoType: Hashable {
@@ -47,11 +48,17 @@ struct WeaponDefinition {
         spread: 0.1, pellets: 7, range: 12, animationFrames: 5, frameDuration: 0.08
     )
 
+    static let chaingun = WeaponDefinition(
+        type: .chaingun, damage: 12, fireRate: 0.08, ammoType: .bullets, ammoPerShot: 1,
+        spread: 0.04, pellets: 1, range: 20, animationFrames: 3, frameDuration: 0.025
+    )
+
     static func forType(_ type: WeaponType) -> WeaponDefinition {
         switch type {
         case .fist: return .fist
         case .pistol: return .pistol
         case .shotgun: return .shotgun
+        case .chaingun: return .chaingun
         }
     }
 }

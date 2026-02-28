@@ -7,7 +7,7 @@ import Foundation
 
 final class TextureAtlas {
     let size = GameConstants.textureSize
-    let texCount = 8
+    let texCount = 12
     /// All textures in one flat array: texCount * size * size UInt32s
     /// Layout: texture[i] pixel (x,y) = atlas[i * size * size + y * size + x]
     let atlas: UnsafeMutablePointer<UInt32>
@@ -22,6 +22,10 @@ final class TextureAtlas {
     static let ceiling = 5
     static let brickTorch = 6
     static let exitPortal = 7
+    static let lockedDoorRed = 8
+    static let lockedDoorBlue = 9
+    static let lockedDoorYellow = 10
+    static let damageFloor = 11
 
     init() {
         pixelsPerTex = GameConstants.textureSize * GameConstants.textureSize
@@ -37,6 +41,10 @@ final class TextureAtlas {
         copyTexture(generateCeilingTexture(), to: Self.ceiling)
         copyTexture(generateBrickTorchTexture(), to: Self.brickTorch)
         copyTexture(generateExitPortalTexture(), to: Self.exitPortal)
+        copyTexture(generateLockedDoorTexture(borderR: 200, borderG: 30, borderB: 30), to: Self.lockedDoorRed)
+        copyTexture(generateLockedDoorTexture(borderR: 30, borderG: 80, borderB: 200), to: Self.lockedDoorBlue)
+        copyTexture(generateLockedDoorTexture(borderR: 220, borderG: 200, borderB: 30), to: Self.lockedDoorYellow)
+        copyTexture(generateDamageFloorTexture(), to: Self.damageFloor)
     }
 
     deinit {
@@ -589,6 +597,103 @@ final class TextureAtlas {
             }
         }
 
+        return pixels
+    }
+
+    // MARK: - Locked Door Textures
+
+    private func generateLockedDoorTexture(borderR: Int, borderG: Int, borderB: Int) -> [UInt32] {
+        // Start with normal door texture, add colored border
+        var pixels = generateDoorTexture()
+
+        let borderColor = c(borderR, borderG, borderB)
+        let borderDark = c(borderR * 2/3, borderG * 2/3, borderB * 2/3)
+
+        // Top and bottom colored borders (4 pixels thick)
+        for y in 0..<4 {
+            for x in 0..<size {
+                pixels[y * size + x] = borderColor
+                pixels[(size - 1 - y) * size + x] = borderColor
+            }
+        }
+
+        // Left and right colored borders (4 pixels thick)
+        for y in 0..<size {
+            for x in 0..<4 {
+                pixels[y * size + x] = borderColor
+                pixels[y * size + (size - 1 - x)] = borderColor
+            }
+        }
+
+        // Inner shadow on border
+        for x in 4..<(size - 4) {
+            pixels[4 * size + x] = borderDark
+        }
+        for y in 4..<(size - 4) {
+            pixels[y * size + 4] = borderDark
+        }
+
+        // Key symbol in center (small lock shape)
+        let cx = size / 2
+        let cy = size / 2
+        let lockColor = c(min(255, borderR + 50), min(255, borderG + 50), min(255, borderB + 50))
+        // Lock body
+        for y in cy...cy+5 {
+            for x in (cx-3)...(cx+3) {
+                if y < size && x >= 0 && x < size {
+                    pixels[y * size + x] = lockColor
+                }
+            }
+        }
+        // Lock shackle (arc)
+        for x in (cx-2)...(cx+2) {
+            let y = cy - 2
+            if y >= 0 && x >= 0 && x < size {
+                pixels[y * size + x] = lockColor
+            }
+        }
+        for y in (cy-2)...cy {
+            if y >= 0 {
+                pixels[y * size + (cx - 2)] = lockColor
+                pixels[y * size + (cx + 2)] = lockColor
+            }
+        }
+
+        return pixels
+    }
+
+    // MARK: - Damage Floor (toxic green nukage)
+    private func generateDamageFloorTexture() -> [UInt32] {
+        var pixels = [UInt32](repeating: 0, count: size * size)
+
+        for y in 0..<size {
+            for x in 0..<size {
+                // Sludgy green base with noise
+                let n1 = noise01(x, y, 800)
+                let n2 = noise01(x / 2, y / 2, 810)
+                let n3 = noise01(x * 3 + y, y * 2 - x, 820)
+
+                // Turbulent green sludge
+                let baseG = 80 + Int(n1 * 60) + Int(n2 * 30)
+                let baseR = 15 + Int(n1 * 20) + Int(n3 * 10)
+                let baseB = 5 + Int(n2 * 15)
+
+                // Bright toxic veins
+                let veinX = sin(Double(x) * 0.3 + n1 * 4.0)
+                let veinY = sin(Double(y) * 0.3 + n2 * 4.0)
+                let vein = max(0.0, 1.0 - abs(veinX + veinY))
+                let veinBright = Int(vein * vein * 80.0)
+
+                // Occasional bright spots (bubbles)
+                let bubble = hash(x / 4, y / 4, 830) % 20 == 0 ? 40 : 0
+
+                pixels[y * size + x] = c(
+                    min(255, baseR + veinBright / 3),
+                    min(255, baseG + veinBright + bubble),
+                    min(255, baseB + veinBright / 4)
+                )
+            }
+        }
         return pixels
     }
 }

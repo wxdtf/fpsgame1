@@ -7,6 +7,7 @@ import Foundation
 
 enum GameStateType {
     case menu
+    case briefing
     case playing
     case paused
     case dead
@@ -48,8 +49,21 @@ final class GameEngine {
     var lastDamageDirection: Double = 0
     var hitMarkerTimer: Double = 0
     var spawnInvincibilityTimer: Double = 0
+    var screenShakeIntensity: Double = 0
+    var screenShakeTimer: Double = 0
+    var muzzleFlashTimer: Double = 0
+    var deathAnimTimer: Double = 0
+    private var deathAnimStarted: Bool = false
+    var statusMessage: String = ""
+    var statusMessageTimer: Double = 0
+    var levelNameTimer: Double = 3.0
+    var exploredTiles: Set<Int> = []
     /// Set to the weapon type that fired this frame (nil if nothing fired)
     var firedWeaponThisFrame: WeaponType?
+    /// Audio event flags — reset each frame, checked by GameViewModel for sound triggers
+    var doorOpenedThisFrame: Bool = false
+    var enemyAlertedThisFrame: Bool = false
+    var enemyHurtThisFrame: Bool = false
 
     init() {
         let data = GameWorld.levelData(for: 1)
@@ -102,6 +116,15 @@ final class GameEngine {
         damageFlashTimer = 0
         pickupFlashTimer = 0
         hitMarkerTimer = 0
+        screenShakeIntensity = 0
+        screenShakeTimer = 0
+        muzzleFlashTimer = 0
+        deathAnimTimer = 0
+        deathAnimStarted = false
+        statusMessage = ""
+        statusMessageTimer = 0
+        levelNameTimer = 3.0
+        exploredTiles = []
         spawnInvincibilityTimer = 1.5
         spawnEntities()
         totalEnemies = enemies.count
@@ -117,16 +140,19 @@ final class GameEngine {
         guard state == .playing else { return }
         elapsedTime += deltaTime
         firedWeaponThisFrame = nil
+        doorOpenedThisFrame = false
+        enemyAlertedThisFrame = false
+        enemyHurtThisFrame = false
         spawnInvincibilityTimer = max(0, spawnInvincibilityTimer - deltaTime)
 
         // Player movement
-        let speedMult = input.sprint ? 1.6 : 1.0
         player.rotate(by: input.turn)
         player.move(
-            forward: input.forward * speedMult,
-            strafe: input.strafe * speedMult,
+            forward: input.forward,
+            strafe: input.strafe,
             deltaTime: deltaTime,
-            world: world
+            world: world,
+            sprint: input.sprint
         )
 
         // Shooting
@@ -136,7 +162,7 @@ final class GameEngine {
 
         // Weapon switch
         if let switchTo = input.weaponSwitch {
-            let types: [WeaponType] = [.fist, .pistol, .shotgun]
+            let types: [WeaponType] = [.fist, .pistol, .shotgun, .chaingun]
             if switchTo >= 1 && switchTo <= types.count {
                 player.switchWeapon(to: types[switchTo - 1])
             }
@@ -158,7 +184,16 @@ final class GameEngine {
                 // Only update animation timers, no AI
                 enemies[i].animationTimer += deltaTime
             } else {
+                let wasIdle: Bool
+                if case .idle = enemies[i].state { wasIdle = true }
+                else if case .patrolling = enemies[i].state { wasIdle = true }
+                else { wasIdle = false }
+                
                 enemies[i].update(deltaTime: deltaTime, playerX: player.x, playerY: player.y, world: world)
+                
+                if wasIdle, case .chasing = enemies[i].state {
+                    enemyAlertedThisFrame = true
+                }
             }
 
             // Check if enemy is attacking and should deal damage
@@ -195,6 +230,8 @@ final class GameEngine {
                             player.takeDamage(enemies[i].type.damage)
                             damageFlashTimer = 0.3
                             lastDamageDirection = atan2(dy, dx)
+                            screenShakeIntensity = min(1.0, Double(enemies[i].type.damage) / 30.0)
+                            screenShakeTimer = 0.3
                         }
                     }
                 }
@@ -214,6 +251,19 @@ final class GameEngine {
         }
         checkItemPickups()
 
+        // Damage floor check
+        let playerTile = world.tileAt(x: Int(player.x), y: Int(player.y))
+        if playerTile == .damageFloor {
+            let dmg = Int(5.0 * deltaTime)
+            if dmg > 0 {
+                player.takeDamage(dmg)
+                damageFlashTimer = max(damageFlashTimer, 0.1)
+            }
+        }
+
+        // Explore tiles around player
+        updateExploredTiles()
+
         // Update doors
         updateDoors(deltaTime: deltaTime)
 
@@ -221,10 +271,32 @@ final class GameEngine {
         damageFlashTimer = max(0, damageFlashTimer - deltaTime)
         pickupFlashTimer = max(0, pickupFlashTimer - deltaTime)
         hitMarkerTimer = max(0, hitMarkerTimer - deltaTime)
+        muzzleFlashTimer = max(0, muzzleFlashTimer - deltaTime)
+        statusMessageTimer = max(0, statusMessageTimer - deltaTime)
+        levelNameTimer = max(0, levelNameTimer - deltaTime)
+        if player.berserkTimer > 0 {
+            player.berserkTimer -= deltaTime
+        }
 
-        // Check death
-        if player.isDead {
-            state = .dead
+        // Screen shake decay
+        if screenShakeTimer > 0 {
+            screenShakeTimer -= deltaTime
+            if screenShakeTimer <= 0 {
+                screenShakeIntensity = 0
+            }
+        }
+
+        // Check death — start death animation
+        if player.isDead && !deathAnimStarted {
+            deathAnimStarted = true
+            deathAnimTimer = 0.5
+        }
+        if deathAnimStarted {
+            deathAnimTimer -= deltaTime
+            if deathAnimTimer <= 0 {
+                state = .dead
+                deathAnimStarted = false
+            }
         }
 
         // Victory is triggered by reaching the exit portal (see tryInteract)
@@ -245,6 +317,15 @@ final class GameEngine {
 
         guard player.weaponState.fire() else { return }
         firedWeaponThisFrame = def.type
+        muzzleFlashTimer = 0.05
+        // Shotgun kick
+        if def.type == .shotgun {
+            screenShakeIntensity = 0.4
+            screenShakeTimer = 0.15
+        }
+
+        // Berserk multiplier for fist
+        let damageMult = (player.isBerserk && def.type == .fist) ? 10 : 1
 
         // Cast rays for each pellet
         for _ in 0..<def.pellets {
@@ -255,10 +336,18 @@ final class GameEngine {
 
             if let (enemyIdx, _) = castAttackRay(fromX: player.x, fromY: player.y, dirX: rayDirX, dirY: rayDirY, range: def.range) {
                 let wasAlive = !enemies[enemyIdx].isDead && !enemies[enemyIdx].isDying && enemies[enemyIdx].health > 0
-                enemies[enemyIdx].takeDamage(def.damage)
+                enemies[enemyIdx].takeDamage(def.damage * damageMult)
                 hitMarkerTimer = 0.15
                 if wasAlive && enemies[enemyIdx].health <= 0 {
                     killCount += 1
+                    // 30% chance to drop health or ammo
+                    if Double.random(in: 0...1) < 0.3 {
+                        let dropType: ItemType = Bool.random() ?
+                            .healthPack(amount: 10) : .ammoBullets(amount: 10)
+                        items.append(Item(type: dropType, x: enemies[enemyIdx].x, y: enemies[enemyIdx].y))
+                    }
+                } else if wasAlive && enemies[enemyIdx].health > 0 {
+                    enemyHurtThisFrame = true
                 }
                 // Alert nearby enemies
                 alertNearbyEnemies(x: enemies[enemyIdx].x, y: enemies[enemyIdx].y, radius: 10)
@@ -333,6 +422,7 @@ final class GameEngine {
             let dist = sqrt(dx * dx + dy * dy)
             if dist < radius {
                 enemies[i].state = .chasing
+                enemyAlertedThisFrame = true
             }
         }
     }
@@ -430,12 +520,30 @@ final class GameEngine {
                 
                 let tile = world.tileAt(x: tileX, y: tileY)
                 
-                if tile == .door {
+                if tile.isDoor {
+                    // Check if locked door requires a key
+                    if tile == .lockedDoorRed && !player.keys.contains(.red) {
+                        statusMessage = "YOU NEED THE RED KEY"
+                        statusMessageTimer = 2.0
+                        return
+                    }
+                    if tile == .lockedDoorBlue && !player.keys.contains(.blue) {
+                        statusMessage = "YOU NEED THE BLUE KEY"
+                        statusMessageTimer = 2.0
+                        return
+                    }
+                    if tile == .lockedDoorYellow && !player.keys.contains(.yellow) {
+                        statusMessage = "YOU NEED THE YELLOW KEY"
+                        statusMessageTimer = 2.0
+                        return
+                    }
+
                     for i in world.doors.indices {
                         if world.doors[i].tileX == tileX && world.doors[i].tileY == tileY {
                             if !world.doors[i].isFullyOpen && !world.doors[i].isOpening {
                                 world.doors[i].isOpening = true
                                 world.doors[i].isClosing = false
+                                doorOpenedThisFrame = true
                             }
                         }
                     }
@@ -481,6 +589,8 @@ final class GameEngine {
                     player.takeDamage(projectiles[i].damage)
                     damageFlashTimer = 0.3
                     lastDamageDirection = atan2(dy, dx)
+                    screenShakeIntensity = min(1.0, Double(projectiles[i].damage) / 30.0)
+                    screenShakeTimer = 0.3
                     projectiles[i].lifetime = 0
                 }
             }
@@ -516,11 +626,41 @@ final class GameEngine {
                 player.ammo[.shells, default: 0] += 8
                 player.switchWeapon(to: .shotgun)
                 picked = true
+            case .chaingunPickup:
+                player.weapons.insert(.chaingun)
+                player.ammo[.bullets, default: 0] += 40
+                player.switchWeapon(to: .chaingun)
+                picked = true
+            case .keyCard(let color):
+                player.keys.insert(color)
+                picked = true
+            case .berserkPack:
+                player.berserkTimer = 30.0
+                player.heal(100) // Restore health
+                player.switchWeapon(to: .fist) // Auto-switch to fist
+                picked = true
             }
 
             if picked {
                 items[i].isCollected = true
                 pickupFlashTimer = 0.2
+            }
+        }
+    }
+
+    // MARK: - Fog of War
+
+    private func updateExploredTiles() {
+        let px = Int(player.x)
+        let py = Int(player.y)
+        let radius = 5
+        for ty in max(0, py - radius)...min(world.height - 1, py + radius) {
+            for tx in max(0, px - radius)...min(world.width - 1, px + radius) {
+                let dx = tx - px
+                let dy = ty - py
+                if dx * dx + dy * dy <= radius * radius {
+                    exploredTiles.insert(ty * world.width + tx)
+                }
             }
         }
     }

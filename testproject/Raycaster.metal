@@ -28,6 +28,7 @@ struct RaycastUniforms {
     float fogB;
     // Torch data
     int torchCount;
+    float elapsedTime;
 };
 
 struct TorchData {
@@ -61,17 +62,20 @@ inline float3 getLighting(float distance) {
     return float3(shade, fog, ceilShade);
 }
 
-// Torch light contribution
+// Torch light contribution with flicker
 inline float torchLight(float worldX, float worldY,
                         device const TorchData* torches,
-                        int torchCount) {
+                        int torchCount, float elapsedTime) {
     float light = 0.0;
     for (int i = 0; i < torchCount; i++) {
         float dx = worldX - torches[i].x;
         float dy = worldY - torches[i].y;
         float distSq = dx * dx + dy * dy;
         if (distSq < 16.0) {
-            light += 1.2 / (1.0 + distSq * 0.8);
+            // Flicker: each torch has a unique phase based on its position
+            float phase = torches[i].x * 3.0 + torches[i].y * 7.0;
+            float flicker = 0.8 + 0.2 * sin(elapsedTime * 8.0 + phase);
+            light += 1.2 * flicker / (1.0 + distSq * 0.8);
         }
     }
     return min(light, 1.5f);
@@ -84,6 +88,7 @@ kernel void floorCeilingKernel(
     device const uint* texAtlas [[buffer(0)]],
     device const RaycastUniforms& uniforms [[buffer(1)]],
     device const TorchData* torches [[buffer(2)]],
+    device const int* worldTiles [[buffer(3)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
     int x = int(gid.x);
@@ -136,8 +141,21 @@ kernel void floorCeilingKernel(
     int ty = int(floorY * float(texSize)) & texMask;
     int texOff = ty * texSize + tx;
 
+    // Check tile type for damage floor
+    int tileX = int(floorX);
+    int tileY = int(floorY);
+    int worldW = uniforms.worldWidth;
+    int worldH = uniforms.worldHeight;
+    int actualFloorOff = floorOff;
+    if (tileX >= 0 && tileX < worldW && tileY >= 0 && tileY < worldH) {
+        int tileVal = worldTiles[tileY * worldW + tileX];
+        if (tileVal == 10) {  // damageFloor
+            actualFloorOff = 11 * ppt;  // TextureAtlas.damageFloor = 11
+        }
+    }
+
     // Floor pixel
-    uint floorColor = texAtlas[floorOff + texOff];
+    uint floorColor = texAtlas[actualFloorOff + texOff];
     float4 floorPixel = shadeThenFog(floorColor, floorShade, fog,
                                       uniforms.fogR, uniforms.fogG, uniforms.fogB);
     outTexture.write(floorPixel, uint2(x, y));
@@ -229,7 +247,8 @@ kernel void wallKernel(
 
         tileVal = worldTiles[mapY * worldW + mapX];
 
-        if (tileVal == 4) {
+        if (tileVal == 4 || tileVal == 7 || tileVal == 8 || tileVal == 9) {
+            // All door types (regular + locked)
             float openAmt = doorOpenAmounts[mapY * worldW + mapX];
             if (openAmt >= 0.99) {
                 // Fully open — ray passes through
@@ -250,7 +269,7 @@ kernel void wallKernel(
                 }
                 // else: ray passes through the open gap
             }
-        } else if (tileVal != 0) {
+        } else if (tileVal != 0 && tileVal != 10) {
             // Solid wall
             hit = true;
             break;
@@ -270,7 +289,7 @@ kernel void wallKernel(
         : (uniforms.playerX + perpWallDist * rayDirX);
     wallX -= floor(wallX);
     // Offset door texture for sliding effect
-    if (tileVal == 4) {
+    if (tileVal == 4 || tileVal == 7 || tileVal == 8 || tileVal == 9) {
         float openAmt = doorOpenAmounts[mapY * worldW + mapX];
         // Flip wallX consistent with gap detection
         if ((side == 0 && rayDirX > 0) || (side == 1 && rayDirY > 0)) {
@@ -298,12 +317,15 @@ kernel void wallKernel(
     // Texture index mapping (matches TileType.textureIndex)
     int texIndex;
     switch (tileVal) {
-        case 1: texIndex = 0; break; // brick
-        case 2: texIndex = 1; break; // metal
-        case 3: texIndex = 2; break; // tech
-        case 4: texIndex = 3; break; // door
-        case 5: texIndex = 6; break; // brickTorch
-        case 6: texIndex = 7; break; // exitPortal
+        case 1: texIndex = 0; break;  // brick
+        case 2: texIndex = 1; break;  // metal
+        case 3: texIndex = 2; break;  // tech
+        case 4: texIndex = 3; break;  // door
+        case 5: texIndex = 6; break;  // brickTorch
+        case 6: texIndex = 7; break;  // exitPortal
+        case 7: texIndex = 8; break;  // lockedDoorRed
+        case 8: texIndex = 9; break;  // lockedDoorBlue
+        case 9: texIndex = 10; break; // lockedDoorYellow
         default: texIndex = 0; break;
     }
     int texBase = texIndex * ppt;
@@ -313,7 +335,7 @@ kernel void wallKernel(
     float sideFactor = side == 1 ? 0.72f : 1.0f;
     float wallWorldX = uniforms.playerX + perpWallDist * rayDirX;
     float wallWorldY = uniforms.playerY + perpWallDist * rayDirY;
-    float tb = torchLight(wallWorldX, wallWorldY, torches, uniforms.torchCount);
+    float tb = torchLight(wallWorldX, wallWorldY, torches, uniforms.torchCount, uniforms.elapsedTime);
     float shade = min(1.0f, baseAtten * sideFactor + tb * 0.35f);
 
     float3 lighting = getLighting(perpWallDist);

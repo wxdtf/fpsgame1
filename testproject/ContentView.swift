@@ -17,7 +17,12 @@ struct ContentView: View {
             switch viewModel.gameState {
             case .menu:
                 TitleScreenView(onStart: {
-                    viewModel.startGame()
+                    viewModel.showBriefing()
+                })
+
+            case .briefing:
+                BriefingScreenView(level: viewModel.currentLevel, onStart: {
+                    viewModel.startFromBriefing()
                 })
 
             case .playing:
@@ -29,7 +34,7 @@ struct ContentView: View {
 
             case .dead:
                 DeathScreenView(onRestart: {
-                    viewModel.restartGame()
+                    viewModel.restartWithBriefing()
                 })
 
             case .levelComplete:

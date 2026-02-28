@@ -32,6 +32,7 @@ struct RaycastUniforms {
     var fogG: Float
     var fogB: Float
     var torchCount: Int32
+    var elapsedTime: Float
 }
 
 struct TorchData {
@@ -82,6 +83,7 @@ final class MetalRenderer {
 
     // Cached torch data
     private var cachedTorches: [TorchData] = []
+    private var currentTime: Double = 0
 
     init?() {
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -266,7 +268,9 @@ final class MetalRenderer {
 
     // MARK: - Render Frame
 
-    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = []) {
+    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], elapsedTime: Double = 0) {
+        currentTime = elapsedTime
+
         // Update door open amounts
         updateDoorBuffer(world: world)
 
@@ -291,7 +295,8 @@ final class MetalRenderer {
             fogR: 10.0,
             fogG: 8.0,
             fogB: 15.0,
-            torchCount: Int32(cachedTorches.count)
+            torchCount: Int32(cachedTorches.count),
+            elapsedTime: Float(elapsedTime)
         )
         memcpy(uniformsBuffer.contents(), &uniforms, MemoryLayout<RaycastUniforms>.size)
 
@@ -343,6 +348,7 @@ final class MetalRenderer {
             fcTable.setAddress(atlasAddr, index: 0)
             fcTable.setAddress(uniformsAddr, index: 1)
             fcTable.setAddress(torchAddr, index: 2)
+            fcTable.setAddress(worldAddr, index: 3)
         }
 
         if let wTable = wallArgTable as? any MTL4ArgumentTable {
@@ -414,6 +420,7 @@ final class MetalRenderer {
             encoder.setBuffer(texAtlasBuffer, offset: 0, index: 0)
             encoder.setBuffer(uniformsBuffer, offset: 0, index: 1)
             encoder.setBuffer(torchBuffer, offset: 0, index: 2)
+            encoder.setBuffer(worldTilesBuffer, offset: 0, index: 3)
 
             let threadGroupSize = MTLSize(width: 16, height: 16, depth: 1)
             let gridSize = MTLSize(width: width, height: height, depth: 1)
@@ -609,8 +616,10 @@ final class MetalRenderer {
         let destH = height / 2
         let destX = (width - destW) / 2
         var destY = height - destH
-        let bobX = Int(sin(player.bobPhase) * 3)
-        let bobY = Int(abs(cos(player.bobPhase)) * 2)
+        let bobMult = player.isMoving ? 1.0 : 0.0
+        let sprintBob = player.isSprinting ? 2.0 : 1.0
+        let bobX = Int(sin(player.bobPhase) * 6 * bobMult * sprintBob)
+        let bobY = Int(abs(cos(player.bobPhase)) * 4 * bobMult * sprintBob)
 
         if player.weaponState.isSwitching {
             let p = player.weaponState.switchProgress
@@ -628,12 +637,15 @@ final class MetalRenderer {
 
     private func spriteTorchLight(worldX: Double, worldY: Double) -> Double {
         var light = 0.0
+        let t = currentTime
         for torch in cachedTorches {
             let dx = worldX - Double(torch.x)
             let dy = worldY - Double(torch.y)
             let distSq = dx * dx + dy * dy
             if distSq < 16.0 {
-                light += 1.2 / (1.0 + distSq * 0.8)
+                let phase = Double(torch.x) * 3.0 + Double(torch.y) * 7.0
+                let flicker = 0.8 + 0.2 * sin(t * 8.0 + phase)
+                light += 1.2 * flicker / (1.0 + distSq * 0.8)
             }
         }
         return min(light, 1.5)
