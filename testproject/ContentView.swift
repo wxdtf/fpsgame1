@@ -1,4 +1,4 @@
-//
+    //
 //  ContentView.swift
 //  testproject
 //
@@ -8,14 +8,68 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var viewModel = GameViewModel()
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            switch viewModel.gameState {
+            case .menu:
+                TitleScreenView(onStart: {
+                    viewModel.startGame()
+                })
+
+            case .playing:
+                gamePlayView
+
+            case .paused:
+                gamePlayView
+                PauseOverlayView()
+
+            case .dead:
+                DeathScreenView(onRestart: {
+                    viewModel.restartGame()
+                })
+
+            case .levelComplete:
+                VictoryScreenView(
+                    killCount: viewModel.killCount,
+                    totalEnemies: viewModel.totalEnemies,
+                    elapsedTime: viewModel.elapsedTime,
+                    currentLevel: viewModel.currentLevel,
+                    onContinue: {
+                        viewModel.advanceToNextLevel()
+                    }
+                )
+            }
         }
-        .padding()
+        .frame(minWidth: 800, minHeight: 500)
+        .onDisappear {
+            viewModel.stopGame()
+        }
+    }
+
+    private var gamePlayView: some View {
+        ZStack {
+            // Game rendering output
+            if let image = viewModel.frameImage {
+                Image(nsImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .aspectRatio(
+                        CGFloat(GameConstants.windowWidth) / CGFloat(GameConstants.windowHeight),
+                        contentMode: .fit
+                    )
+            }
+
+            // HUD overlay
+            HUDView(viewModel: viewModel)
+
+            // Input capture (transparent overlay)
+            GameInputView(inputManager: viewModel.inputManager)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }
 
