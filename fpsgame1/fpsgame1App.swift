@@ -1,6 +1,6 @@
 //
-//  testprojectApp.swift
-//  testproject
+//  fpsgame1App.swift
+//  fpsgame1
 //
 //  Created by Jack Wang on 2026-02-27.
 //
@@ -8,7 +8,7 @@
 import SwiftUI
 
 @main
-struct testprojectApp: App {
+struct fpsgame1App: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
