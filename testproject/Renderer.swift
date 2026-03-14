@@ -63,6 +63,9 @@ final class Renderer {
         currentWorld = world
         cachedTorches = findNearbyTorches(world: world, aroundX: player.x, aroundY: player.y)
 
+        // Animate exit portal texture
+        textures.updateExitPortal(time: elapsedTime)
+
         renderFloorCeiling(player: player)
         renderWalls(player: player, world: world)
         renderSprites(player: player, enemies: enemies, items: items, projectiles: projectiles)
@@ -246,7 +249,8 @@ final class Renderer {
                 tile = world.tileAt(x: mapX, y: mapY)
 
                 if tile.isDoor {
-                    if let door = world.doors.first(where: { $0.tileX == mapX && $0.tileY == mapY }) {
+                    if let doorIdx = world.doorAt(x: mapX, y: mapY) {
+                        let door = world.doors[doorIdx]
                         if door.openAmount >= 0.99 {
                             // Fully open — ray passes through
                         } else {
@@ -281,7 +285,8 @@ final class Renderer {
             wallX -= floor(wallX)
             // Offset door texture by open amount for sliding effect
             if tile.isDoor {
-                if let door = world.doors.first(where: { $0.tileX == mapX && $0.tileY == mapY }) {
+                if let doorIdx = world.doorAt(x: mapX, y: mapY) {
+                    let door = world.doors[doorIdx]
                     // Flip wallX consistent with gap detection
                     if (side == 0 && rayDirX > 0) || (side == 1 && rayDirY > 0) {
                         wallX = 1.0 - wallX
@@ -335,6 +340,7 @@ final class Renderer {
         struct SpriteEntry {
             var x: Double; var y: Double; var dist: Double
             var pixels: [UInt32]; var spriteW: Int; var spriteH: Int; var vOffset: Double
+            var scale: Double = 1.0
         }
 
         var entries: [SpriteEntry] = []
@@ -359,7 +365,8 @@ final class Renderer {
             entries.append(SpriteEntry(x: item.x, y: item.y, dist: dist,
                                        pixels: sprites.itemSprites.frames[si],
                                        spriteW: sprites.itemSprites.width, spriteH: sprites.itemSprites.height,
-                                       vOffset: 0.15 + sin(item.bobPhase) * 0.05))
+                                       vOffset: 0.15 + sin(item.bobPhase) * 0.05,
+                                       scale: 0.4))
         }
 
         // Projectiles
@@ -372,7 +379,7 @@ final class Renderer {
             entries.append(SpriteEntry(x: proj.x, y: proj.y, dist: dist,
                                        pixels: sheet.frames[frameIdx],
                                        spriteW: sheet.width, spriteH: sheet.height,
-                                       vOffset: 0.15))
+                                       vOffset: 0.15, scale: 0.3))
         }
 
         entries.sort { $0.dist > $1.dist }
@@ -390,8 +397,8 @@ final class Renderer {
 
             let invTY = 1.0 / tY
             let screenX = Int(Double(w) * 0.5 * (1.0 + tX * invTY))
-            let sH = Int(abs(Double(h) * invTY))
-            let sW = Int(abs(Double(h) * invTY) * Double(entry.spriteW) / Double(entry.spriteH))
+            let sH = Int(abs(Double(h) * invTY) * entry.scale)
+            let sW = Int(abs(Double(h) * invTY) * Double(entry.spriteW) / Double(entry.spriteH) * entry.scale)
             let vOff = Int(entry.vOffset * Double(h) * invTY)
 
             let dsy = max(0, halfH - sH / 2 + vOff)

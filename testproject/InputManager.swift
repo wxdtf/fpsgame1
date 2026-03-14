@@ -26,6 +26,7 @@ final class InputManager {
     static let keyEscape: UInt16 = 53
     static let keyReturn: UInt16 = 36
     static let keyShift: UInt16 = 56
+    static let keyTab: UInt16 = 48
     static let keyLeft: UInt16 = 123
     static let keyRight: UInt16 = 124
     static let keyDown: UInt16 = 125
@@ -41,6 +42,7 @@ final class InputManager {
         var escapePressed: Bool = false
         var enterPressed: Bool = false
         var sprint: Bool = false
+        var tabPressed: Bool = false
     }
 
     func getInputState() -> InputState {
@@ -60,6 +62,8 @@ final class InputManager {
         state.interact = keys.contains(Self.keyE)
         state.escapePressed = keys.contains(Self.keyEscape)
         state.enterPressed = keys.contains(Self.keyReturn)
+
+        state.tabPressed = keys.contains(Self.keyTab)
 
         if keys.contains(Self.key1) { state.weaponSwitch = 1 }
         else if keys.contains(Self.key2) { state.weaponSwitch = 2 }

@@ -501,11 +501,25 @@ final class TextureAtlas {
 
     // MARK: - Exit Portal (glowing green energy portal - level exit)
     private func generateExitPortalTexture() -> [UInt32] {
+        return generateExitPortalTexture(time: 0)
+    }
+
+    /// Animate the exit portal texture — call each frame with elapsed time
+    func updateExitPortal(time: Double) {
+        let pixels = generateExitPortalTexture(time: time)
+        let offset = Self.exitPortal * pixelsPerTex
+        for i in 0..<min(pixels.count, pixelsPerTex) {
+            atlas[offset + i] = pixels[i]
+        }
+    }
+
+    private func generateExitPortalTexture(time: Double) -> [UInt32] {
         var pixels = [UInt32](repeating: 0, count: size * size)
 
         let cx = Double(size) / 2.0
         let cy = Double(size) / 2.0
         let maxR = Double(size) / 2.0 - 3.0
+        let rotOffset = time * 1.5  // Swirl rotation speed
 
         for y in 0..<size {
             for x in 0..<size {
@@ -514,9 +528,9 @@ final class TextureAtlas {
                     let n = noise01(x, y, 700)
                     let v = 30 + Int(n * 15)
                     pixels[y * size + x] = c(v, v + 5, v)
-                    // Inner bevel glow
                     if x == 3 || x == size - 4 || y == 3 || y == size - 4 {
-                        pixels[y * size + x] = c(20, 80, 30)
+                        let pulse = 0.7 + 0.3 * sin(time * 3.0)
+                        pixels[y * size + x] = c(Int(20.0 * pulse), Int(80.0 * pulse), Int(30.0 * pulse))
                     }
                     continue
                 }
@@ -527,36 +541,34 @@ final class TextureAtlas {
                 let normDist = dist / maxR
 
                 if normDist > 1.0 {
-                    // Corner outside the portal circle — dark frame
                     pixels[y * size + x] = c(15, 20, 15)
                     continue
                 }
 
-                // Swirling energy pattern using noise at different scales
-                let angle = atan2(dy, dx)
-                let swirl1 = noise01(Int(angle * 10 + dist * 3), Int(dist * 5), 710)
-                let swirl2 = noise01(x / 2, y / 2, 720)
-                let swirl3 = noise01(x * 3 + y, y * 2 - x, 730)
+                // Animated swirling pattern — rotate with time
+                let angle = atan2(dy, dx) + rotOffset
+                let swirl1 = sin(angle * 3.0 + dist * 0.8 + time * 2.0) * 0.5 + 0.5
+                let swirl2 = sin(angle * 5.0 - dist * 1.2 + time * 1.5) * 0.5 + 0.5
+                let swirl3 = cos(angle * 2.0 + dist * 0.5 - time * 3.0) * 0.5 + 0.5
 
-                // Core glow — brighter toward center
-                let coreBright = max(0.0, 1.0 - normDist)
+                // Core glow — pulsing
+                let pulse = 0.85 + 0.15 * sin(time * 4.0)
+                let coreBright = max(0.0, 1.0 - normDist) * pulse
                 let edgeGlow = normDist > 0.7 ? (normDist - 0.7) / 0.3 : 0.0
 
-                // Green energy field
                 let baseG = Int(80.0 + coreBright * 175.0 + swirl1 * 40.0)
                 let baseR = Int(10.0 + coreBright * 60.0 + swirl2 * 20.0)
                 let baseB = Int(20.0 + coreBright * 80.0 + swirl3 * 30.0)
 
-                // Bright ring at edge
-                let ringR = Int(edgeGlow * 80.0)
-                let ringG = Int(edgeGlow * 200.0)
-                let ringB = Int(edgeGlow * 100.0)
+                let ringPulse = 0.8 + 0.2 * sin(time * 5.0 + normDist * 6.0)
+                let ringR = Int(edgeGlow * 80.0 * ringPulse)
+                let ringG = Int(edgeGlow * 200.0 * ringPulse)
+                let ringB = Int(edgeGlow * 100.0 * ringPulse)
 
-                // Bright center hotspot
                 let hotspot = normDist < 0.2 ? (0.2 - normDist) / 0.2 : 0.0
-                let hotR = Int(hotspot * 100.0)
-                let hotG = Int(hotspot * 255.0)
-                let hotB = Int(hotspot * 150.0)
+                let hotR = Int(hotspot * 100.0 * pulse)
+                let hotG = Int(hotspot * 255.0 * pulse)
+                let hotB = Int(hotspot * 150.0 * pulse)
 
                 pixels[y * size + x] = c(
                     min(255, baseR + ringR + hotR),
@@ -566,21 +578,17 @@ final class TextureAtlas {
             }
         }
 
-        // Add "EXIT" text in bright white across the center
-        // Simple 3x5 pixel font for E, X, I, T
+        // Add "EXIT" text with pulsing brightness
         let letters: [[[Int]]] = [
-            // E
             [[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,1,1]],
-            // X
             [[1,0,1],[0,1,0],[0,1,0],[0,1,0],[1,0,1]],
-            // I
             [[1,1,1],[0,1,0],[0,1,0],[0,1,0],[1,1,1]],
-            // T
             [[1,1,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],
         ]
         let textStartX = size / 2 - 9
         let textStartY = size / 2 - 3
-        let textColor = c(255, 255, 230)
+        let textPulse = 0.8 + 0.2 * sin(time * 6.0)
+        let textColor = c(Int(255.0 * textPulse), Int(255.0 * textPulse), Int(230.0 * textPulse))
 
         for (li, letter) in letters.enumerated() {
             let ox = textStartX + li * 5

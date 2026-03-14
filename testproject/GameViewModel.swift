@@ -21,6 +21,7 @@ final class GameViewModel {
     var currentLevel: Int = 1
     var recentDamage: Bool = false
     var recentPickup: Bool = false
+    var lastDamageDirection: Double = 0
     var statusMessage: String = ""
     var heldKeys: [String] = []
     var isBerserk: Bool = false
@@ -34,6 +35,11 @@ final class GameViewModel {
     var playerY: Double = 0
     var playerAngle: Double = 0
     var currentWorld: GameWorld?
+    var showMinimap: Bool = true
+    var levelTransitionOpacity: Double = 0  // 0 = no fade, 1 = fully black
+    var faceFrameIndex: Int = 0
+    var objectiveText: String = ""
+    var objectiveComplete: Bool = false
 
     let inputManager = InputManager()
 
@@ -53,6 +59,9 @@ final class GameViewModel {
     private var prevBobPhase: Double = 0
     private var prevWeaponSwitching: Bool = false
     private var prevGameState: GameStateType = .menu
+    private var prevTabState: Bool = false
+    private var levelTransitionTimer: Double = 0
+    private var isTransitioningLevel: Bool = false
 
     func showBriefing() {
         // If no engine yet (first time from menu), create one to know the level
@@ -108,7 +117,7 @@ final class GameViewModel {
 
         updateUIState()
         startGameLoop()
-        audio.playAmbientDrone()
+        audio.playBGM(level: engine.currentLevel)
     }
 
     func restartGame() {
@@ -132,7 +141,7 @@ final class GameViewModel {
         prevGameState = .playing
         lastFrameTime = CACurrentMediaTime()
         updateUIState()
-        audio.playAmbientDrone()
+        audio.playBGM(level: gameEngine?.currentLevel ?? 1)
     }
 
     func restartWithBriefing() {
@@ -146,7 +155,7 @@ final class GameViewModel {
         // Reset level but keep engine paused during briefing
         gameEngine?.restart()
         gameEngine?.state = .paused
-        audio.stopAmbientDrone()
+        audio.stopBGM()
         gameState = .briefing
         currentLevel = gameEngine?.currentLevel ?? 1
     }
@@ -162,7 +171,7 @@ final class GameViewModel {
         gameEngine?.nextLevel()
         // Pause engine during briefing so it doesn't update in background
         gameEngine?.state = .paused
-        audio.stopAmbientDrone()
+        audio.stopBGM()
         // Show briefing before starting the next level
         gameState = .briefing
         currentLevel = gameEngine?.currentLevel ?? 1
@@ -171,8 +180,10 @@ final class GameViewModel {
     /// Called from briefing screen when player presses enter to begin next level
     func beginAfterBriefing() {
         guard let engine = gameEngine else { return }
-        engine.state = .playing  // Resume engine from paused
-        gameState = .playing  // Explicitly exit briefing state
+        engine.state = .playing
+        gameState = .playing
+        levelTransitionOpacity = 0
+        isTransitioningLevel = false
         if useGPU {
             metalRenderer?.uploadWorldData(world: engine.world)
         }
@@ -184,13 +195,13 @@ final class GameViewModel {
         prevGameState = .playing
         lastFrameTime = CACurrentMediaTime()
         updateUIState()
-        audio.playAmbientDrone()
+        audio.playBGM(level: engine.currentLevel)
     }
 
     func stopGame() {
         timer?.cancel()
         timer = nil
-        audio.stopAmbientDrone()
+        audio.stopBGM()
     }
 
     func togglePause() {
@@ -242,6 +253,12 @@ final class GameViewModel {
         if engine.state == .playing {
             let input = inputManager.getInputState()
 
+            // Toggle minimap with TAB (edge detection)
+            if input.tabPressed && !prevTabState {
+                showMinimap.toggle()
+            }
+            prevTabState = input.tabPressed
+
             // Snapshot state before update
             let prevHealth = prevPlayerHealth
             let prevKills = prevKillCount
@@ -292,6 +309,11 @@ final class GameViewModel {
                 audio.playEnemyPain()
             }
 
+            // Enemy attack (per-type sounds)
+            if let attackType = engine.enemyAttackedThisFrame {
+                audio.playEnemyAttack(type: attackType)
+            }
+
             // Player hurt
             if engine.player.health < prevHealth {
                 audio.playHurt()
@@ -317,18 +339,36 @@ final class GameViewModel {
         if currentState != prevGameState {
             switch currentState {
             case .levelComplete:
-                audio.stopAmbientDrone()
+                audio.stopBGM()
                 audio.playLevelComplete()
+                // Start fade-to-black transition
+                isTransitioningLevel = true
+                levelTransitionTimer = 0
+                levelTransitionOpacity = 0
             case .dead:
-                audio.stopAmbientDrone()
+                audio.stopBGM()
             case .paused:
-                audio.stopAmbientDrone()
+                audio.stopBGM()
             case .playing where prevGameState == .paused:
-                audio.playAmbientDrone()
+                audio.playBGM(level: engine.currentLevel)
             default:
                 break
             }
             prevGameState = currentState
+        }
+
+        // Handle level transition fade
+        if isTransitioningLevel {
+            levelTransitionTimer += deltaTime
+            levelTransitionOpacity = min(1.0, levelTransitionTimer / 0.6)
+            if levelTransitionTimer >= 0.8 {
+                isTransitioningLevel = false
+                updateUIState()
+                return
+            }
+            // Don't update game state to levelComplete until fade is done
+            // Keep rendering the last frame with increasing darkness
+            return
         }
 
         // Always update UI state so SwiftUI sees state transitions (dead/levelComplete)
@@ -417,7 +457,7 @@ final class GameViewModel {
 
             // Death screen effect
             if engine.deathAnimTimer > 0 && engine.player.isDead {
-                let progress = 1.0 - engine.deathAnimTimer / 0.5
+                let progress = 1.0 - engine.deathAnimTimer / 0.8
                 activePixelBuffer.applyDeathEffect(progress: progress)
             }
 
@@ -442,6 +482,14 @@ final class GameViewModel {
                 }
             }
 
+            // Level transition fade to black
+            if levelTransitionOpacity > 0 {
+                activePixelBuffer.applyTint(
+                    color: PixelBuffer.makeColor(r: 0, g: 0, b: 0),
+                    intensity: levelTransitionOpacity
+                )
+            }
+
             frameImage = activePixelBuffer.toNSImage()
         }
     }
@@ -459,6 +507,7 @@ final class GameViewModel {
         currentLevel = engine.currentLevel
         recentDamage = engine.damageFlashTimer > 0
         recentPickup = engine.pickupFlashTimer > 0
+        lastDamageDirection = engine.lastDamageDirection
 
         switch engine.player.currentWeapon {
         case .fist: currentWeaponName = "FIST"
@@ -485,12 +534,30 @@ final class GameViewModel {
         // Fog of war / minimap data
         exploredTiles = engine.exploredTiles
         worldWidth = engine.world.width
-        enemyPositions = engine.enemies.map { (x: $0.x, y: $0.y, isDead: $0.isDead) }
-        itemPositions = engine.items.map { (x: $0.x, y: $0.y, collected: $0.isCollected) }
+
+        // Reuse arrays instead of allocating new ones each frame
+        if enemyPositions.count != engine.enemies.count {
+            enemyPositions = engine.enemies.map { (x: $0.x, y: $0.y, isDead: $0.isDead) }
+        } else {
+            for i in engine.enemies.indices {
+                enemyPositions[i] = (x: engine.enemies[i].x, y: engine.enemies[i].y, isDead: engine.enemies[i].isDead)
+            }
+        }
+        if itemPositions.count != engine.items.count {
+            itemPositions = engine.items.map { (x: $0.x, y: $0.y, collected: $0.isCollected) }
+        } else {
+            for i in engine.items.indices {
+                itemPositions[i] = (x: engine.items[i].x, y: engine.items[i].y, collected: engine.items[i].isCollected)
+            }
+        }
         playerX = engine.player.x
         playerY = engine.player.y
         playerAngle = engine.player.angle
         currentWorld = engine.world
+
+        // Mission objective
+        objectiveText = engine.objectiveText
+        objectiveComplete = engine.missionObjectiveComplete
 
         let ammoType = WeaponDefinition.forType(engine.player.currentWeapon).ammoType
         if let type = ammoType {
@@ -498,20 +565,24 @@ final class GameViewModel {
         } else {
             ammo = -1  // Infinite (fist)
         }
+
+        // Update face frame (must use tracked properties so SwiftUI redraws)
+        if let face = doomFace {
+            faceFrameIndex = face.frameForState(
+                health: health,
+                recentDamage: engine.damageFlashTimer > 0.1,
+                damageDir: lastDamageDirection,
+                pickupGrin: recentPickup,
+                elapsedTime: elapsedTime,
+                playerAngle: playerAngle
+            )
+        }
     }
 
     var faceFramePixels: [UInt32] {
-        guard let face = doomFace, let engine = gameEngine else {
+        guard let face = doomFace else {
             return [UInt32](repeating: 0xFF808080, count: 48 * 48)
         }
-        let frameIdx = face.frameForState(
-            health: engine.player.health,
-            recentDamage: engine.damageFlashTimer > 0.1,
-            damageDir: engine.lastDamageDirection,
-            pickupGrin: engine.pickupFlashTimer > 0,
-            elapsedTime: engine.elapsedTime,
-            playerAngle: engine.player.angle
-        )
-        return face.frames[min(frameIdx, face.frames.count - 1)]
+        return face.frames[min(faceFrameIndex, face.frames.count - 1)]
     }
 }

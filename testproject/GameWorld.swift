@@ -70,6 +70,22 @@ struct GameWorld {
     /// Flat 1D tile array for cache-friendly access: tiles1D[y * width + x]
     var tiles1D: [TileType]
     var doors: [DoorState]
+    /// O(1) door lookup: key = tileY * width + tileX, value = index into doors array
+    var doorIndex: [Int: Int] = [:]
+
+    /// Rebuild the door index after doors change
+    mutating func rebuildDoorIndex() {
+        doorIndex.removeAll(keepingCapacity: true)
+        for i in doors.indices {
+            let key = doors[i].tileY * width + doors[i].tileX
+            doorIndex[key] = i
+        }
+    }
+
+    @inline(__always)
+    func doorAt(x: Int, y: Int) -> Int? {
+        doorIndex[y * width + x]
+    }
 
     @inline(__always)
     func tileAt(x: Int, y: Int) -> TileType {
@@ -81,8 +97,8 @@ struct GameWorld {
         let tile = tileAt(x: x, y: y)
         if tile.isWall { return true }
         if tile.isDoor {
-            if let door = doors.first(where: { $0.tileX == x && $0.tileY == y }) {
-                return door.openAmount < 0.8  // Allow passage when door is mostly open
+            if let idx = doorAt(x: x, y: y) {
+                return doors[idx].openAmount < 0.8
             }
             return true
         }
@@ -133,7 +149,9 @@ struct GameWorld {
             }
         }
 
-        return GameWorld(width: w, height: h, tiles1D: tiles1D, doors: doors)
+        var world = GameWorld(width: w, height: h, tiles1D: tiles1D, doors: doors)
+        world.rebuildDoorIndex()
+        return world
     }
 
     static func levelData(for number: Int) -> LevelData {
@@ -155,10 +173,10 @@ struct GameWorld {
                 [
                     "The UAC facility has gone dark.",
                     "Reports of hostile entities throughout.",
-                    "Fight through the base and locate the",
-                    "exit portal. No key cards required.",
+                    "Retrieve the INTEL DATA from the",
+                    "command center and reach the exit.",
                     "",
-                    "Objective: Reach the exit portal."
+                    "Objective: Retrieve the intel data."
                 ]
             )
         case 2:
@@ -167,10 +185,10 @@ struct GameWorld {
                 [
                     "You've entered an ancient temple",
                     "corrupted by demonic energy.",
-                    "The exit is sealed behind a RED door.",
-                    "Find the RED KEY CARD in the west wing.",
+                    "Find the DEMONIC ARTIFACT hidden",
+                    "deep within. The RED KEY opens the exit.",
                     "",
-                    "Objective: Find the red key and escape."
+                    "Objective: Find the demonic artifact."
                 ]
             )
         case 3:
@@ -180,9 +198,9 @@ struct GameWorld {
                     "The refinery is overrun. Heavy resistance.",
                     "A RED KEY opens the mid-section.",
                     "A BLUE KEY beyond opens the final arena.",
-                    "Expect the worst. This is the last stand.",
+                    "EXTERMINATE ALL DEMONS. Leave none alive.",
                     "",
-                    "Objective: Find both keys. Reach the exit."
+                    "Objective: Exterminate all demons."
                 ]
             )
         default:
@@ -283,6 +301,8 @@ struct GameWorld {
                 // Optional side room — chaingun & berserk
                 (.chaingunPickup, 2.5, 17.5),
                 (.berserkPack, 4.5, 17.5),
+                // Mission item — intel data in command center area
+                (.intelData, 3.5, 26.5),
             ]
         )
     }
@@ -383,6 +403,8 @@ struct GameWorld {
                 (.armorVest(amount: 25), 9.5, 3.5),
                 // South passage
                 (.healthPack(amount: 25), 11.5, 27.5),
+                // Mission item — demonic artifact deep in east wing
+                (.demonicArtifact, 29.5, 12.5),
             ]
         )
     }

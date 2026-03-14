@@ -172,23 +172,22 @@ final class PixelBuffer {
         }
     }
 
-    /// Death screen effect — shift pixels down and fill top with dark red
+    /// Death screen effect — camera tilts down toward the ground with red tint
     func applyDeathEffect(progress: Double) {
         let buf = rawPixels
         let w = width
         let h = height
-        let shiftAmount = Int(progress * Double(h) * 0.3)
+
+        // Camera tilt: shift pixels down (simulates looking at the floor)
+        let shiftAmount = Int(progress * Double(h) * 0.35)
         let darkRed = PixelBuffer.makeColor(r: 40, g: 5, b: 5)
 
-        // Shift pixels down
         if shiftAmount > 0 {
             for y in stride(from: h - 1, through: shiftAmount, by: -1) {
                 let srcRow = y - shiftAmount
-                for x in 0..<w {
-                    buf[y * w + x] = buf[srcRow * w + x]
-                }
+                memcpy(buf + y * w, buf + srcRow * w, w * MemoryLayout<UInt32>.size)
             }
-            // Fill top rows with dark red
+            // Fill top rows with dark red (sky being replaced by ground tilt)
             for y in 0..<shiftAmount {
                 for x in 0..<w {
                     buf[y * w + x] = darkRed
@@ -196,14 +195,32 @@ final class PixelBuffer {
             }
         }
 
-        // Red tint overlay
-        let tintIntensity = Float(progress * 0.4)
+        // Horizontal tilt: slight barrel shift (left side shifts more than right)
+        let tiltPixels = Int(progress * 8.0)
+        if tiltPixels > 0 {
+            for y in 0..<h {
+                let rowTilt = tiltPixels * (w / 2 - abs(y - h / 2)) / (h / 2)
+                if rowTilt > 0 {
+                    // Shift row left by rowTilt pixels
+                    let rowStart = y * w
+                    for x in 0..<(w - rowTilt) {
+                        buf[rowStart + x] = buf[rowStart + x + rowTilt]
+                    }
+                    for x in (w - rowTilt)..<w {
+                        buf[rowStart + x] = darkRed
+                    }
+                }
+            }
+        }
+
+        // Red tint overlay — intensifies as death progresses
+        let tintIntensity = Float(progress * 0.5)
         let inv = 1.0 - tintIntensity
         for i in 0..<(w * h) {
             let p = buf[i]
             let r = Float((p >> 16) & 0xFF) * inv + 180.0 * tintIntensity
-            let g = Float((p >> 8) & 0xFF) * inv
-            let b = Float(p & 0xFF) * inv
+            let g = Float((p >> 8) & 0xFF) * inv * 0.7
+            let b = Float(p & 0xFF) * inv * 0.5
             buf[i] = (0xFF << 24)
                 | (UInt32(min(255.0, r)) << 16)
                 | (UInt32(min(255.0, g)) << 8)

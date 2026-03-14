@@ -271,6 +271,13 @@ final class MetalRenderer {
     func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], elapsedTime: Double = 0) {
         currentTime = elapsedTime
 
+        // Animate exit portal texture and update GPU atlas
+        textures.updateExitPortal(time: elapsedTime)
+        let portalOffset = TextureAtlas.exitPortal * GameConstants.textureSize * GameConstants.textureSize
+        let portalBytes = GameConstants.textureSize * GameConstants.textureSize * MemoryLayout<UInt32>.size
+        memcpy(texAtlasBuffer.contents() + portalOffset * MemoryLayout<UInt32>.size,
+               textures.atlas + portalOffset, portalBytes)
+
         // Update door open amounts
         updateDoorBuffer(world: world)
 
@@ -509,6 +516,7 @@ final class MetalRenderer {
         struct SpriteEntry {
             var x: Double; var y: Double; var dist: Double
             var pixels: [UInt32]; var spriteW: Int; var spriteH: Int; var vOffset: Double
+            var scale: Double = 1.0
         }
 
         var entries: [SpriteEntry] = []
@@ -533,7 +541,8 @@ final class MetalRenderer {
             entries.append(SpriteEntry(x: item.x, y: item.y, dist: dist,
                                        pixels: sprites.itemSprites.frames[si],
                                        spriteW: sprites.itemSprites.width, spriteH: sprites.itemSprites.height,
-                                       vOffset: 0.15 + sin(item.bobPhase) * 0.05))
+                                       vOffset: 0.15 + sin(item.bobPhase) * 0.05,
+                                       scale: 0.4))
         }
 
         // Projectiles
@@ -546,7 +555,7 @@ final class MetalRenderer {
             entries.append(SpriteEntry(x: proj.x, y: proj.y, dist: dist,
                                        pixels: sheet.frames[frameIdx],
                                        spriteW: sheet.width, spriteH: sheet.height,
-                                       vOffset: 0.15))
+                                       vOffset: 0.15, scale: 0.3))
         }
 
         entries.sort { $0.dist > $1.dist }
@@ -564,8 +573,8 @@ final class MetalRenderer {
 
             let invTY = 1.0 / tY
             let screenX = Int(Double(w) * 0.5 * (1.0 + tX * invTY))
-            let sH = Int(abs(Double(h) * invTY))
-            let sW = Int(abs(Double(h) * invTY) * Double(entry.spriteW) / Double(entry.spriteH))
+            let sH = Int(abs(Double(h) * invTY) * entry.scale)
+            let sW = Int(abs(Double(h) * invTY) * Double(entry.spriteW) / Double(entry.spriteH) * entry.scale)
             let vOff = Int(entry.vOffset * Double(h) * invTY)
 
             let dsy = max(0, halfH - sH / 2 + vOff)

@@ -6,37 +6,21 @@
 import Foundation
 
 final class DoomFace {
-    // 48x48 pixel face with 22 frames
+    // 48x48 pixel face with 42 frames (health-aware for all states)
     let size = 48
     var frames: [[UInt32]] = []
 
-    // Frame indices
-    // Center face: 5 health levels (100%→0%)
-    static let centerHealth100 = 0
-    static let centerHealth80  = 1
-    static let centerHealth60  = 2
-    static let centerHealth40  = 3
-    static let centerHealth20  = 4
-    // Left-look: 5 health levels
-    static let leftHealth100   = 5
-    static let leftHealth80    = 6
-    static let leftHealth60    = 7
-    static let leftHealth40    = 8
-    static let leftHealth20    = 9
-    // Right-look: 5 health levels
-    static let rightHealth100  = 10
-    static let rightHealth80   = 11
-    static let rightHealth60   = 12
-    static let rightHealth40   = 13
-    static let rightHealth20   = 14
-    // Special states
-    static let ouch            = 15
-    static let grin            = 16
-    static let godMode         = 17
-    static let blinkHalf       = 18
-    static let blinkFull       = 19
-    static let idleEyeLeft     = 20
-    static let idleEyeRight    = 21
+    // Frame layout:
+    //  0- 4: Center face × 5 health levels
+    //  5- 9: Left-look × 5 health levels
+    // 10-14: Right-look × 5 health levels
+    // 15-19: Ouch × 5 health levels
+    // 20: Grin (always healthy)
+    // 21: God mode (always healthy)
+    // 22-26: Blink half × 5 health levels
+    // 27-31: Blink full × 5 health levels
+    // 32-36: Idle eye left × 5 health levels
+    // 37-41: Idle eye right × 5 health levels
 
     init() {
         generateAllFrames()
@@ -53,59 +37,51 @@ final class DoomFace {
         elapsedTime: Double = 0,
         playerAngle: Double = 0
     ) -> Int {
-        if health <= 0 { return healthIndex(for: 0, direction: .center) }
-        if isGodMode { return DoomFace.godMode }
-        if pickupGrin { return DoomFace.grin }
+        let hLevel = healthLevel(for: health)
+
+        if health <= 0 { return hLevel }  // Center dead face
+        if isGodMode { return 21 }
+        if pickupGrin { return 20 }
 
         // Ouch on recent strong damage
         if recentDamage {
-            // Use damage direction to look toward the source
             let relAngle = normalizeAngle(damageDir - playerAngle)
             if relAngle > 0.5 && relAngle < 2.64 {
-                return healthIndex(for: health, direction: .left)
+                return 5 + hLevel  // Left-look with health
             } else if relAngle > 3.64 && relAngle < 5.78 {
-                return healthIndex(for: health, direction: .right)
+                return 10 + hLevel  // Right-look with health
             }
-            return DoomFace.ouch
+            return 15 + hLevel  // Ouch with health
         }
 
         // Periodic blink (every 3-4s, 0.15s duration)
         let blinkCycle = elapsedTime.truncatingRemainder(dividingBy: 3.5)
         if blinkCycle > 3.35 {
-            return DoomFace.blinkFull
+            return 27 + hLevel  // Blink full with health
         } else if blinkCycle > 3.25 {
-            return DoomFace.blinkHalf
+            return 22 + hLevel  // Blink half with health
         }
 
         // Subtle idle eye movement (every 2s)
         let idleCycle = elapsedTime.truncatingRemainder(dividingBy: 4.0)
         if idleCycle > 1.8 && idleCycle < 2.3 {
-            return DoomFace.idleEyeLeft
+            return 32 + hLevel  // Idle eye left with health
         } else if idleCycle > 3.3 && idleCycle < 3.8 {
-            return DoomFace.idleEyeRight
+            return 37 + hLevel  // Idle eye right with health
         }
 
-        return healthIndex(for: health, direction: .center)
+        return hLevel  // Center face with health
     }
 
     // MARK: - Helpers
 
-    private enum LookDirection { case left, center, right }
-
-    private func healthIndex(for health: Int, direction: LookDirection) -> Int {
-        let healthPct = Double(health) / Double(GameConstants.maxHealth)
-        let level: Int
-        if healthPct > 0.8 { level = 0 }
-        else if healthPct > 0.6 { level = 1 }
-        else if healthPct > 0.4 { level = 2 }
-        else if healthPct > 0.2 { level = 3 }
-        else { level = 4 }
-
-        switch direction {
-        case .center: return level
-        case .left: return 5 + level
-        case .right: return 10 + level
-        }
+    private func healthLevel(for health: Int) -> Int {
+        let healthPct = Double(max(0, health)) / Double(GameConstants.maxHealth)
+        if healthPct > 0.8 { return 0 }
+        else if healthPct > 0.6 { return 1 }
+        else if healthPct > 0.4 { return 2 }
+        else if healthPct > 0.2 { return 3 }
+        else { return 4 }
     }
 
     private func normalizeAngle(_ a: Double) -> Double {
@@ -120,26 +96,26 @@ final class DoomFace {
     private func generateAllFrames() {
         frames.removeAll()
 
-        // 0-4: Center face, 5 health levels
+        // 0-4: Center face × 5 health levels
         for h in 0..<5 { frames.append(generateFace(healthLevel: h, lookDir: 0, special: .none)) }
-        // 5-9: Left look, 5 health levels
+        // 5-9: Left look × 5 health levels
         for h in 0..<5 { frames.append(generateFace(healthLevel: h, lookDir: -1, special: .none)) }
-        // 10-14: Right look, 5 health levels
+        // 10-14: Right look × 5 health levels
         for h in 0..<5 { frames.append(generateFace(healthLevel: h, lookDir: 1, special: .none)) }
-        // 15: Ouch
-        frames.append(generateFace(healthLevel: 2, lookDir: 0, special: .ouch))
-        // 16: Grin
+        // 15-19: Ouch × 5 health levels
+        for h in 0..<5 { frames.append(generateFace(healthLevel: h, lookDir: 0, special: .ouch)) }
+        // 20: Grin
         frames.append(generateFace(healthLevel: 0, lookDir: 0, special: .grin))
-        // 17: God mode
+        // 21: God mode
         frames.append(generateFace(healthLevel: 0, lookDir: 0, special: .godMode))
-        // 18: Blink half
-        frames.append(generateFace(healthLevel: 0, lookDir: 0, special: .blinkHalf))
-        // 19: Blink full
-        frames.append(generateFace(healthLevel: 0, lookDir: 0, special: .blinkFull))
-        // 20: Idle eye left
-        frames.append(generateFace(healthLevel: 0, lookDir: 0, special: .idleEyeLeft))
-        // 21: Idle eye right
-        frames.append(generateFace(healthLevel: 0, lookDir: 0, special: .idleEyeRight))
+        // 22-26: Blink half × 5 health levels
+        for h in 0..<5 { frames.append(generateFace(healthLevel: h, lookDir: 0, special: .blinkHalf)) }
+        // 27-31: Blink full × 5 health levels
+        for h in 0..<5 { frames.append(generateFace(healthLevel: h, lookDir: 0, special: .blinkFull)) }
+        // 32-36: Idle eye left × 5 health levels
+        for h in 0..<5 { frames.append(generateFace(healthLevel: h, lookDir: 0, special: .idleEyeLeft)) }
+        // 37-41: Idle eye right × 5 health levels
+        for h in 0..<5 { frames.append(generateFace(healthLevel: h, lookDir: 0, special: .idleEyeRight)) }
     }
 
     private enum SpecialFrame { case none, ouch, grin, godMode, blinkHalf, blinkFull, idleEyeLeft, idleEyeRight }
@@ -171,19 +147,19 @@ final class DoomFace {
         // 4. Eyebrows
         drawEyebrows(&px, healthLevel: healthLevel, special: special)
 
-        // 5. Nose
-        drawNose(&px, skin: darkerSkin)
+        // 5. Nose (shows damage at low health)
+        drawNose(&px, skin: darkerSkin, healthLevel: healthLevel)
 
         // 6. Mouth
         drawMouth(&px, healthLevel: healthLevel, special: special)
 
-        // 7. Blood overlay (drawn last so it's on top)
-        drawBlood(&px, healthLevel: healthLevel)
-
-        // 8. Bruise
-        if healthLevel >= 2 {
+        // 7. Bruise/swelling (drawn before blood so blood overlays)
+        if healthLevel >= 1 {
             drawBruise(&px, healthLevel: healthLevel)
         }
+
+        // 8. Blood overlay (drawn last so it's on top of everything)
+        drawBlood(&px, healthLevel: healthLevel)
 
         return px
     }
@@ -420,25 +396,34 @@ final class DoomFace {
 
     // MARK: - Nose
 
-    private func drawNose(_ px: inout [UInt32], skin: UInt32) {
+    private func drawNose(_ px: inout [UInt32], skin: UInt32, healthLevel: Int) {
         let noseShadow = darkenColor(skin, factor: 0.7)
         let noseHighlight = lightenColor(skin, factor: 1.15)
+        let swollen = makeColor(r: 180, g: 100, b: 100)
 
-        // Triangle nose shadow
         let noseY = 26
-        // Nose bridge
+        // Nose bridge (shifts slightly at high damage = crooked)
+        let crook = healthLevel >= 3 ? 1 : 0
         for y in 23...25 {
-            px[y * size + 24] = noseHighlight
-            px[y * size + 23] = noseShadow
+            px[y * size + 24 + crook] = noseHighlight
+            px[y * size + 23 + crook] = noseShadow
         }
-        // Nose base (wider at bottom)
-        for x in 22...26 {
-            px[noseY * size + x] = noseShadow
+        // Nose base (wider when swollen)
+        let noseWidth = healthLevel >= 2 ? 3 : 2
+        for x in (23 - noseWidth)...(25 + noseWidth) {
+            guard x >= 0 && x < size else { continue }
+            px[noseY * size + x] = healthLevel >= 3 ? swollen : noseShadow
         }
         // Nostrils
         let nostril = darkenColor(skin, factor: 0.5)
         px[(noseY + 1) * size + 22] = nostril
         px[(noseY + 1) * size + 26] = nostril
+        // Slight redness around nose tip at low health
+        if healthLevel >= 3 {
+            let redNose = makeColor(r: 195, g: 120, b: 110)
+            px[26 * size + 23] = redNose
+            px[26 * size + 25] = redNose
+        }
     }
 
     // MARK: - Mouth
@@ -503,24 +488,32 @@ final class DoomFace {
                     px[(mouthY + 1 + droop) * size + x] = lipColor
                 }
             case 2:
-                // Grimace with some teeth showing
+                // Grimace with teeth showing, split lip
+                let splitLip = makeColor(r: 180, g: 30, b: 20)
                 for x in (cx - 5)...(cx + 5) {
                     px[mouthY * size + x] = lipColor
                     px[(mouthY + 1) * size + x] = teethColor
                     px[(mouthY + 2) * size + x] = lipColor
                 }
+                // Split lip on right side
+                px[mouthY * size + (cx + 3)] = splitLip
+                px[(mouthY + 1) * size + (cx + 4)] = splitLip
             case 3:
-                // Grimace + open grimace
+                // Pained grimace with teeth clenched, slight blood at corner
+                let mouthBlood = makeColor(r: 180, g: 15, b: 10)
                 for x in (cx - 5)...(cx + 5) {
                     px[mouthY * size + x] = lipColor
                     px[(mouthY + 1) * size + x] = teethColor
-                    px[(mouthY + 2) * size + x] = darkMouth
-                    px[(mouthY + 3) * size + x] = lipColor
+                    px[(mouthY + 2) * size + x] = lipColor
                 }
+                // Small blood spot at right mouth corner
+                px[(mouthY + 2) * size + (cx + 5)] = mouthBlood
+                px[(mouthY + 3) * size + (cx + 5)] = mouthBlood
             default:
-                // Dead — slack jaw
+                // Dead — slack jaw, open mouth
                 for y in mouthY...(mouthY + 4) {
-                    for x in (cx - 4)...(cx + 4) {
+                    for x in (cx - 5)...(cx + 5) {
+                        guard y < size else { break }
                         let dy = y - mouthY
                         if dy <= 1 {
                             px[y * size + x] = teethColor
@@ -529,7 +522,7 @@ final class DoomFace {
                         }
                     }
                 }
-                for x in (cx - 4)...(cx + 4) {
+                for x in (cx - 5)...(cx + 5) {
                     px[(mouthY - 1) * size + x] = lipColor
                 }
             }
@@ -544,54 +537,49 @@ final class DoomFace {
 
         guard healthLevel >= 1 else { return }
 
-        // Level 1: Small forehead cut
-        if healthLevel >= 1 {
-            px[10 * size + 18] = bloodBright
-            px[11 * size + 18] = bloodBright
-            px[12 * size + 18] = bloodDark
-            px[12 * size + 19] = bloodDark
-        }
+        // Level 1: Small forehead cut only
+        px[10 * size + 18] = bloodBright
+        px[11 * size + 18] = bloodDark
 
-        // Level 2: Nose bleed + more forehead blood
+        // Level 2: Forehead drip + single nostril bleed
         if healthLevel >= 2 {
-            // Nose bleed
-            for y in 28...32 {
-                px[y * size + 24] = bloodBright
+            // Forehead drip extends
+            px[12 * size + 18] = bloodBright
+            px[13 * size + 18] = bloodDark
+            // Single nostril bleed (right)
+            for y in 28...30 {
+                px[y * size + 25] = bloodBright
             }
-            px[33 * size + 24] = bloodDark
-            // Forehead drip
-            for y in 10...15 {
-                px[y * size + 18] = bloodBright
-            }
-            px[16 * size + 18] = bloodDark
+            px[31 * size + 25] = bloodDark
         }
 
-        // Level 3: Heavy bleeding + streams
+        // Level 3: Blood tear from one eye + nosebleed both sides
         if healthLevel >= 3 {
-            // Left side stream
-            for y in 8...22 {
-                px[y * size + 12] = bloodBright
-                px[y * size + 13] = bloodDark
+            // Blood tear from left eye (thin, short)
+            for y in 22...27 {
+                px[y * size + 15] = bloodBright
             }
-            // Right side
-            for y in 14...20 {
-                px[y * size + 35] = bloodBright
+            px[28 * size + 15] = bloodDark
+            // Nosebleed from both nostrils
+            for y in 28...31 {
+                px[y * size + 23] = bloodBright
+                px[y * size + 25] = bloodBright
             }
-            // More nose blood
-            for x in 23...25 {
-                px[30 * size + x] = bloodBright
-                px[31 * size + x] = bloodDark
-            }
+            px[32 * size + 23] = bloodDark
+            px[32 * size + 25] = bloodDark
         }
 
-        // Level 4: Face covered
+        // Level 4: Both eye tears + forehead gash + nosebleed
         if healthLevel >= 4 {
-            for y in 6...40 {
-                for x in 8...40 {
-                    if px[y * size + x] != 0 && (x + y) % 3 == 0 {
-                        px[y * size + x] = bloodDark
-                    }
-                }
+            // Blood tear from right eye too
+            for y in 22...27 {
+                px[y * size + 33] = bloodBright
+            }
+            px[28 * size + 33] = bloodDark
+            // Forehead gash (short, 2px wide)
+            for y in 9...14 {
+                px[y * size + 18] = bloodBright
+                px[y * size + 19] = bloodDark
             }
         }
     }
@@ -599,40 +587,52 @@ final class DoomFace {
     // MARK: - Bruise
 
     private func drawBruise(_ px: inout [UInt32], healthLevel: Int) {
-        let bruise1 = makeColor(r: 120, g: 80, b: 140)   // Purple
-        let bruise2 = makeColor(r: 100, g: 70, b: 120)   // Darker purple
+        let bruiseLight = makeColor(r: 150, g: 100, b: 110)  // Reddish
+        let bruiseMid = makeColor(r: 120, g: 75, b: 130)     // Purple
+        let bruiseDark = makeColor(r: 90, g: 55, b: 110)     // Dark purple
+        let blackEye = makeColor(r: 60, g: 35, b: 70)
 
-        // Right cheek bruise
-        let bcx = 34
-        let bcy = 25
-        let radius = healthLevel >= 3 ? 4 : 3
-
-        for y in (bcy - radius)...(bcy + radius) {
-            for x in (bcx - radius)...(bcx + radius) {
-                let dx = x - bcx
-                let dy = y - bcy
-                if dx * dx + dy * dy < radius * radius {
+        // Helper to apply a small bruise spot
+        func applyBruise(cx: Int, cy: Int, radius: Int, colors: [UInt32]) {
+            for y in (cy - radius)...(cy + radius) {
+                for x in (cx - radius)...(cx + radius) {
+                    let dx = x - cx
+                    let dy = y - cy
+                    let dist = dx * dx + dy * dy
+                    guard dist < radius * radius else { continue }
                     guard x >= 0 && x < size && y >= 0 && y < size else { continue }
-                    // Only bruise over existing skin pixels
-                    if px[y * size + x] != 0 {
-                        px[y * size + x] = (dx + dy) % 2 == 0 ? bruise1 : bruise2
-                    }
+                    guard px[y * size + x] != 0 else { continue }
+                    let colorIdx = min(colors.count - 1, dist * colors.count / (radius * radius))
+                    px[y * size + x] = colors[colorIdx]
                 }
             }
         }
 
-        // Black eye at very low health
+        // Level 1: Minor reddening on right cheek
+        if healthLevel >= 1 {
+            applyBruise(cx: 34, cy: 26, radius: 2, colors: [bruiseLight])
+        }
+
+        // Level 2: Cheek bruise + slight under-eye swelling
+        if healthLevel >= 2 {
+            applyBruise(cx: 34, cy: 25, radius: 3, colors: [bruiseMid, bruiseLight])
+            applyBruise(cx: 33, cy: 22, radius: 2, colors: [bruiseLight])
+        }
+
+        // Level 3: Black eye on right side + left cheek bruise
         if healthLevel >= 3 {
-            let eyeX = 32
-            let eyeY = 20
-            for y in (eyeY - 2)...(eyeY + 2) {
-                for x in (eyeX + 2)...(eyeX + 4) {
-                    guard x >= 0 && x < size && y >= 0 && y < size else { continue }
-                    if px[y * size + x] != 0 {
-                        px[y * size + x] = makeColor(r: 80, g: 50, b: 90)
-                    }
-                }
-            }
+            // Right black eye (small, focused under eye)
+            applyBruise(cx: 33, cy: 21, radius: 3, colors: [blackEye, bruiseDark])
+            // Left cheek bruise
+            applyBruise(cx: 14, cy: 26, radius: 2, colors: [bruiseMid])
+        }
+
+        // Level 4: Both black eyes + jaw bruise
+        if healthLevel >= 4 {
+            // Left black eye too
+            applyBruise(cx: 15, cy: 21, radius: 3, colors: [blackEye, bruiseDark])
+            // Jaw bruise
+            applyBruise(cx: 22, cy: 37, radius: 2, colors: [bruiseMid, bruiseLight])
         }
     }
 

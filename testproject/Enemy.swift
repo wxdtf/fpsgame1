@@ -118,21 +118,21 @@ struct Enemy: Identifiable {
         }
     }
 
-    /// Vertical offset for death animation (sprite sinks toward ground)
+    /// Vertical offset for death animation (sprite settles toward ground)
     var deathVOffset: Double {
         switch state {
         case .dying(let timer):
             if timer > 0.6 { return 0.0 }
             else if timer > 0.3 {
-                // Falling: 0.0 → 0.1 over 0.3s
+                // Falling: 0.0 → 0.08 over 0.3s
                 let progress = 1.0 - (timer - 0.3) / 0.3
-                return progress * 0.1
+                return progress * 0.08
             } else {
-                // On ground: 0.1 → 0.2
+                // Settling: 0.08 → 0.12
                 let progress = 1.0 - timer / 0.3
-                return 0.1 + progress * 0.1
+                return 0.08 + progress * 0.04
             }
-        case .dead: return 0.2
+        case .dead: return 0.12
         default: return 0.0
         }
     }
@@ -256,6 +256,10 @@ struct Enemy: Identifiable {
         return true
     }
 
+    /// Stuck counter — increments when enemy can't move, triggers wall-avoidance steering
+    var stuckTimer: Double = 0
+    var wallAvoidAngle: Double = 0
+
     private mutating func moveToward(targetX: Double, targetY: Double, deltaTime: Double, world: GameWorld) {
         let dx = targetX - x
         let dy = targetY - y
@@ -263,17 +267,56 @@ struct Enemy: Identifiable {
         guard dist > 0.5 else { return }
 
         let speed = type.speed * deltaTime
-        let moveX = (dx / dist) * speed
-        let moveY = (dy / dist) * speed
-
         let radius = 0.25
+
+        // Primary direction: straight toward target
+        var dirX = dx / dist
+        var dirY = dy / dist
+
+        // If stuck, blend in a wall-avoidance direction
+        if stuckTimer > 0.15 {
+            dirX = cos(wallAvoidAngle)
+            dirY = sin(wallAvoidAngle)
+        }
+
+        let moveX = dirX * speed
+        let moveY = dirY * speed
+
+        var moved = false
         let newX = x + moveX
         if world.isPassable(x: newX, y: y, radius: radius) {
             x = newX
+            moved = true
         }
         let newY = y + moveY
         if world.isPassable(x: x, y: newY, radius: radius) {
             y = newY
+            moved = true
+        }
+
+        if !moved {
+            stuckTimer += deltaTime
+            if stuckTimer > 0.15 {
+                // Try wall-sliding: perpendicular directions
+                let perpX1 = -dirY, perpY1 = dirX
+                let perpX2 = dirY, perpY2 = -dirX
+
+                let slide1X = x + perpX1 * speed
+                let slide1Y = y + perpY1 * speed
+                let slide2X = x + perpX2 * speed
+                let slide2Y = y + perpY2 * speed
+
+                if world.isPassable(x: slide1X, y: slide1Y, radius: radius) {
+                    wallAvoidAngle = atan2(perpY1, perpX1)
+                } else if world.isPassable(x: slide2X, y: slide2Y, radius: radius) {
+                    wallAvoidAngle = atan2(perpY2, perpX2)
+                } else {
+                    // Random jitter to escape corners
+                    wallAvoidAngle = Double.random(in: 0...(2 * .pi))
+                }
+            }
+        } else {
+            stuckTimer = max(0, stuckTimer - deltaTime * 2)
         }
     }
 

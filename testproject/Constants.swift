@@ -38,6 +38,36 @@ enum GameConstants {
     static let shotgunDamage = 12
     static let shotgunPellets = 7
 
+    // Ammo caps
+    static let maxBullets = 200
+    static let maxShells = 50
+
+    // Difficulty scaling per level
+    static func difficultyHealthMultiplier(for level: Int) -> Double {
+        switch level {
+        case 1: return 1.0
+        case 2: return 1.2
+        case 3: return 1.5
+        default: return 1.0 + Double(level - 1) * 0.25
+        }
+    }
+    static func difficultyDamageMultiplier(for level: Int) -> Double {
+        switch level {
+        case 1: return 1.0
+        case 2: return 1.15
+        case 3: return 1.35
+        default: return 1.0 + Double(level - 1) * 0.2
+        }
+    }
+    static func difficultySpeedMultiplier(for level: Int) -> Double {
+        switch level {
+        case 1: return 1.0
+        case 2: return 1.05
+        case 3: return 1.15
+        default: return 1.0 + Double(level - 1) * 0.05
+        }
+    }
+
     // Rendering performance
     static let maxRenderDistance: Double = 20.0
     static let textureSize = 64

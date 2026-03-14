@@ -20,21 +20,41 @@ struct HUDView: View {
                 statusBar
             }
 
-            // Level name overlay (top center, fades out)
-            if viewModel.levelNameOpacity > 0 {
-                VStack {
+            // Level name overlay (top center, fades out) + objective
+            VStack(spacing: 4) {
+                if viewModel.levelNameOpacity > 0 {
                     Text(viewModel.levelName)
                         .font(.system(size: 22, weight: .black, design: .monospaced))
                         .foregroundColor(.green)
                         .shadow(color: .black, radius: 4, x: 2, y: 2)
                         .opacity(viewModel.levelNameOpacity)
                         .padding(.top, 30)
-                    Spacer()
+                } else {
+                    Spacer().frame(height: 30)
                 }
+
+                // Persistent objective indicator
+                if !viewModel.objectiveText.isEmpty {
+                    HStack(spacing: 6) {
+                        Text(viewModel.objectiveComplete ? "✓" : "◆")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(viewModel.objectiveComplete ? .green : .yellow)
+                        Text(viewModel.objectiveText)
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(viewModel.objectiveComplete ? .green : .yellow)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .opacity(viewModel.objectiveComplete ? 0.6 : 0.85)
+                }
+
+                Spacer()
             }
 
-            // Minimap (top-right corner)
-            if let world = viewModel.currentWorld {
+            // Minimap (top-right corner, toggle with TAB)
+            if viewModel.showMinimap, let world = viewModel.currentWorld {
                 VStack {
                     HStack {
                         Spacer()

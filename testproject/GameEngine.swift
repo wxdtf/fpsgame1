@@ -64,6 +64,7 @@ final class GameEngine {
     var doorOpenedThisFrame: Bool = false
     var enemyAlertedThisFrame: Bool = false
     var enemyHurtThisFrame: Bool = false
+    var enemyAttackedThisFrame: EnemyType? = nil
 
     init() {
         let data = GameWorld.levelData(for: 1)
@@ -132,7 +133,12 @@ final class GameEngine {
 
     private func spawnEntities() {
         let data = GameWorld.levelData(for: currentLevel)
-        enemies = data.enemies.map { Enemy(type: $0.0, x: $0.1, y: $0.2) }
+        let healthMult = GameConstants.difficultyHealthMultiplier(for: currentLevel)
+        enemies = data.enemies.map {
+            var e = Enemy(type: $0.0, x: $0.1, y: $0.2)
+            e.health = Int(Double(e.health) * healthMult)
+            return e
+        }
         items = data.items.map { Item(type: $0.0, x: $0.1, y: $0.2) }
     }
 
@@ -143,6 +149,7 @@ final class GameEngine {
         doorOpenedThisFrame = false
         enemyAlertedThisFrame = false
         enemyHurtThisFrame = false
+        enemyAttackedThisFrame = nil
         spawnInvincibilityTimer = max(0, spawnInvincibilityTimer - deltaTime)
 
         // Player movement
@@ -201,10 +208,15 @@ final class GameEngine {
                 // Deal damage once per attack, at the midpoint of the animation
                 if !enemies[i].hasDealtDamageThisAttack && enemies[i].animationTimer >= 0.15 {
                     enemies[i].hasDealtDamageThisAttack = true
+                    enemyAttackedThisFrame = enemies[i].type
 
                     let dx = enemies[i].x - player.x
                     let dy = enemies[i].y - player.y
                     let dist = sqrt(dx * dx + dy * dy)
+
+                    let dmgMult = GameConstants.difficultyDamageMultiplier(for: currentLevel)
+                    let spdMult = GameConstants.difficultySpeedMultiplier(for: currentLevel)
+                    let scaledDamage = Int(Double(enemies[i].type.damage) * dmgMult)
 
                     if enemies[i].type.isRanged {
                         // Spawn a visible projectile aimed at the player
@@ -215,19 +227,19 @@ final class GameEngine {
                         let pDirX = pdx / pdist
                         let pDirY = pdy / pdist
                         let projType: ProjectileType = enemies[i].type == .imp ? .fireball : .bullet
-                        let projSpeed: Double = enemies[i].type == .imp ? 5.0 : 10.0
+                        let projSpeed: Double = (enemies[i].type == .imp ? 5.0 : 10.0) * spdMult
                         projectiles.append(Projectile(
                             x: enemies[i].x + pDirX * 0.5,
                             y: enemies[i].y + pDirY * 0.5,
                             dirX: pDirX, dirY: pDirY,
                             speed: projSpeed,
-                            damage: enemies[i].type.damage,
+                            damage: scaledDamage,
                             isEnemy: true,
                             type: projType
                         ))
                     } else {
                         if dist <= enemies[i].type.attackRange {
-                            player.takeDamage(enemies[i].type.damage)
+                            player.takeDamage(scaledDamage)
                             damageFlashTimer = 0.3
                             lastDamageDirection = atan2(dy, dx)
                             screenShakeIntensity = min(1.0, Double(enemies[i].type.damage) / 30.0)
@@ -289,7 +301,7 @@ final class GameEngine {
         // Check death — start death animation
         if player.isDead && !deathAnimStarted {
             deathAnimStarted = true
-            deathAnimTimer = 0.5
+            deathAnimTimer = 0.8
         }
         if deathAnimStarted {
             deathAnimTimer -= deltaTime
@@ -538,19 +550,32 @@ final class GameEngine {
                         return
                     }
 
-                    for i in world.doors.indices {
-                        if world.doors[i].tileX == tileX && world.doors[i].tileY == tileY {
-                            if !world.doors[i].isFullyOpen && !world.doors[i].isOpening {
-                                world.doors[i].isOpening = true
-                                world.doors[i].isClosing = false
-                                doorOpenedThisFrame = true
-                            }
+                    if let doorIdx = world.doorAt(x: tileX, y: tileY) {
+                        if !world.doors[doorIdx].isFullyOpen && !world.doors[doorIdx].isOpening {
+                            world.doors[doorIdx].isOpening = true
+                            world.doors[doorIdx].isClosing = false
+                            doorOpenedThisFrame = true
                         }
                     }
                     return
                 }
                 
                 if tile == .exitPortal {
+                    if !missionObjectiveComplete {
+                        switch currentLevel {
+                        case 1:
+                            statusMessage = "RETRIEVE THE INTEL DATA FIRST"
+                        case 2:
+                            statusMessage = "FIND THE DEMONIC ARTIFACT FIRST"
+                        case 3:
+                            let remaining = enemies.filter { $0.type == .demon && !$0.isDead }.count
+                            statusMessage = "DEMONS REMAIN: \(remaining)"
+                        default:
+                            statusMessage = "OBJECTIVE INCOMPLETE"
+                        }
+                        statusMessageTimer = 2.0
+                        return
+                    }
                     state = .levelComplete
                     return
                 }
@@ -568,7 +593,7 @@ final class GameEngine {
     // MARK: - Projectiles
 
     private func updateProjectiles(deltaTime: Double) {
-        projectiles = projectiles.filter { $0.lifetime > 0 }
+        projectiles.removeAll(where: { $0.lifetime <= 0 })
 
         for i in projectiles.indices {
             projectiles[i].x += projectiles[i].dirX * projectiles[i].speed * deltaTime
@@ -604,51 +629,132 @@ final class GameEngine {
             guard items[i].canPickUp(playerX: player.x, playerY: player.y) else { continue }
 
             var picked = false
+            var message = ""
             switch items[i].type {
             case .healthPack(let amount):
                 if player.health < GameConstants.maxHealth {
                     player.heal(amount)
                     picked = true
+                    message = "PICKED UP A MEDKIT"
                 }
             case .armorVest(let amount):
                 if player.armor < GameConstants.maxArmor {
                     player.addArmor(amount)
                     picked = true
+                    message = "PICKED UP ARMOR"
                 }
             case .ammoBullets(let amount):
-                player.ammo[.bullets, default: 0] += amount
+                let cap = GameConstants.maxBullets
+                let current = player.ammo[.bullets, default: 0]
+                guard current < cap else { continue }
+                player.ammo[.bullets] = min(cap, current + amount)
                 picked = true
+                message = "PICKED UP BULLETS"
             case .ammoShells(let amount):
-                player.ammo[.shells, default: 0] += amount
+                let cap = GameConstants.maxShells
+                let current = player.ammo[.shells, default: 0]
+                guard current < cap else { continue }
+                player.ammo[.shells] = min(cap, current + amount)
                 picked = true
+                message = "PICKED UP SHELLS"
             case .shotgunPickup:
                 player.weapons.insert(.shotgun)
-                player.ammo[.shells, default: 0] += 8
+                player.ammo[.shells] = min(GameConstants.maxShells, player.ammo[.shells, default: 0] + 8)
                 player.switchWeapon(to: .shotgun)
                 picked = true
+                message = "PICKED UP A SHOTGUN!"
             case .chaingunPickup:
                 player.weapons.insert(.chaingun)
-                player.ammo[.bullets, default: 0] += 40
+                player.ammo[.bullets] = min(GameConstants.maxBullets, player.ammo[.bullets, default: 0] + 40)
                 player.switchWeapon(to: .chaingun)
                 picked = true
+                message = "PICKED UP A CHAINGUN!"
             case .keyCard(let color):
                 player.keys.insert(color)
                 picked = true
+                switch color {
+                case .red: message = "PICKED UP THE RED KEY"
+                case .blue: message = "PICKED UP THE BLUE KEY"
+                case .yellow: message = "PICKED UP THE YELLOW KEY"
+                }
             case .berserkPack:
                 player.berserkTimer = 30.0
-                player.heal(100) // Restore health
-                player.switchWeapon(to: .fist) // Auto-switch to fist
+                player.heal(100)
+                player.switchWeapon(to: .fist)
                 picked = true
+                message = "BERSERK!"
+            case .intelData:
+                picked = true
+                message = "RETRIEVED INTEL DATA"
+            case .demonicArtifact:
+                picked = true
+                message = "RETRIEVED DEMONIC ARTIFACT"
             }
 
             if picked {
                 items[i].isCollected = true
                 pickupFlashTimer = 0.2
+                if !message.isEmpty {
+                    statusMessage = message
+                    statusMessageTimer = 1.5
+                }
             }
         }
     }
 
+    // MARK: - Mission Objectives
+
+    /// Whether the current level's mission objective is complete
+    var missionObjectiveComplete: Bool {
+        switch currentLevel {
+        case 1:
+            // Level 1: Collect Intel Data
+            return items.contains { if case .intelData = $0.type { return $0.isCollected } else { return false } }
+        case 2:
+            // Level 2: Retrieve Demonic Artifact
+            return items.contains { if case .demonicArtifact = $0.type { return $0.isCollected } else { return false } }
+        case 3:
+            // Level 3: Exterminate all Demons
+            return enemies.filter { $0.type == .demon }.allSatisfy { $0.isDead }
+        default:
+            return true
+        }
+    }
+
+    /// Description of the current objective for HUD display
+    var objectiveText: String {
+        switch currentLevel {
+        case 1: return "RETRIEVE INTEL DATA"
+        case 2: return "FIND DEMONIC ARTIFACT"
+        case 3:
+            let remaining = enemies.filter { $0.type == .demon && !$0.isDead }.count
+            if remaining > 0 {
+                return "EXTERMINATE DEMONS: \(remaining) LEFT"
+            }
+            return "EXTERMINATE DEMONS"
+        default: return ""
+        }
+    }
+
     // MARK: - Fog of War
+
+    /// Percentage of walkable tiles the player has explored (0-100)
+    var explorationPercentage: Int {
+        var walkable = 0
+        for y in 0..<world.height {
+            for x in 0..<world.width {
+                let tile = world.tileAt(x: x, y: y)
+                if !tile.isWall { walkable += 1 }
+            }
+        }
+        guard walkable > 0 else { return 100 }
+        let explored = exploredTiles.filter { key in
+            let x = key % world.width
+            let y = key / world.width
+            return !world.tileAt(x: x, y: y).isWall
+        }.count
+        return min(100, explored * 100 / walkable)
+    }
 
     private func updateExploredTiles() {
         let px = Int(player.x)

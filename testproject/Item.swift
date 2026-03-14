@@ -14,6 +14,8 @@ enum ItemType {
     case chaingunPickup
     case keyCard(color: KeyColor)
     case berserkPack
+    case intelData
+    case demonicArtifact
 }
 
 struct Item: Identifiable {
@@ -53,6 +55,8 @@ struct Item: Identifiable {
             case .yellow: return 8
             }
         case .berserkPack: return 9
+        case .intelData: return 10
+        case .demonicArtifact: return 11
         }
     }
 }
