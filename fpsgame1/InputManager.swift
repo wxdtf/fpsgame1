@@ -11,6 +11,7 @@ final class InputManager {
     var mouseDeltaY: CGFloat = 0
     var mouseClicked: Bool = false
     var mouseHeld: Bool = false
+    var mouseSensitivity: Double = 1.0
 
     // macOS key codes
     static let keyW: UInt16 = 13
@@ -54,7 +55,7 @@ final class InputManager {
         if keys.contains(Self.keyShift) { state.sprint = true }
 
         // Rotation: mouse delta + arrow keys
-        var turn = Double(mouseDeltaX) * 0.003
+        var turn = Double(mouseDeltaX) * 0.003 * mouseSensitivity
         if keys.contains(Self.keyLeft) { turn -= 0.04 }
         if keys.contains(Self.keyRight) { turn += 0.04 }
         state.turn = turn

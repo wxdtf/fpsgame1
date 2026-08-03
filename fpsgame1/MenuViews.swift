@@ -6,10 +6,15 @@
 import SwiftUI
 
 struct TitleScreenView: View {
-    let onStart: () -> Void
+    let hasSavedCampaign: Bool
+    let acceptsEnter: Bool
+    let onNewGame: () -> Void
+    let onContinue: () -> Void
+    let onSettings: () -> Void
     @State private var blinkVisible = true
     @State private var titleScale: CGFloat = 0.8
     @State private var flickerOpacity: Double = 1.0
+    @State private var blinkTimer: Timer?
 
     var body: some View {
         ZStack {
@@ -54,10 +59,12 @@ struct TitleScreenView: View {
 
                 // Menu options
                 VStack(spacing: 16) {
-                    Text("PRESS ENTER OR CLICK TO START")
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                        .opacity(blinkVisible ? 1.0 : 0.3)
+                    if hasSavedCampaign {
+                        menuButton("CONTINUE CAMPAIGN", action: onContinue)
+                            .opacity(blinkVisible ? 1.0 : 0.65)
+                    }
+                    menuButton("NEW CAMPAIGN", action: onNewGame)
+                    menuButton("SETTINGS", action: onSettings)
 
                     VStack(spacing: 8) {
                         controlHint("WASD", description: "Move")
@@ -83,12 +90,32 @@ struct TitleScreenView: View {
             withAnimation(.easeOut(duration: 0.5)) {
                 titleScale = 1.0
             }
-            Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in
+            blinkTimer?.invalidate()
+            blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in
                 blinkVisible.toggle()
             }
         }
-        .onTapGesture { onStart() }
-        .background(KeyPressHandler(onEnter: onStart))
+        .onDisappear {
+            blinkTimer?.invalidate()
+            blinkTimer = nil
+        }
+        .background {
+            if acceptsEnter {
+                KeyPressHandler(onEnter: hasSavedCampaign ? onContinue : onNewGame)
+            }
+        }
+    }
+
+    private func menuButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .foregroundColor(.white)
+                .frame(width: 260)
+                .padding(.vertical, 7)
+                .overlay(Rectangle().stroke(Color.red.opacity(0.7), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private func controlHint(_ key: String, description: String) -> some View {
@@ -162,7 +189,9 @@ struct VictoryScreenView: View {
                 }
                 .padding(.vertical, 20)
 
-                Text("PRESS ENTER FOR NEXT LEVEL")
+                Text(currentLevel >= GameWorld.maxLevel
+                    ? "PRESS ENTER TO FINISH CAMPAIGN"
+                    : "PRESS ENTER FOR NEXT LEVEL")
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.8))
             }
@@ -203,6 +232,41 @@ struct VictoryScreenView: View {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+struct CampaignCompleteView: View {
+    let onNewCampaign: () -> Void
+    @State private var opacity: Double = 0
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 22) {
+                Text("CAMPAIGN COMPLETE")
+                    .font(.system(size: 52, weight: .black, design: .monospaced))
+                    .foregroundColor(.green)
+                    .shadow(color: .green.opacity(0.5), radius: 12)
+
+                Text("THE INVASION HAS BEEN STOPPED")
+                    .font(.system(size: 18, weight: .bold, design: .monospaced))
+                    .foregroundColor(.yellow)
+
+                Text("PRESS ENTER TO START A NEW CAMPAIGN")
+                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.top, 20)
+            }
+            .opacity(opacity)
+        }
+        .onAppear {
+            withAnimation(.easeIn(duration: 0.8)) {
+                opacity = 1.0
+            }
+        }
+        .onTapGesture { onNewCampaign() }
+        .background(KeyPressHandler(onEnter: onNewCampaign))
     }
 }
 
@@ -286,6 +350,10 @@ struct BriefingScreenView: View {
 }
 
 struct PauseOverlayView: View {
+    let onResume: () -> Void
+    let onSettings: () -> Void
+    let onQuitToMenu: () -> Void
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.6).ignoresSafeArea()
@@ -298,9 +366,104 @@ struct PauseOverlayView: View {
                 Text("PRESS ESC TO RESUME")
                     .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundColor(.gray)
+
+                Button("RESUME", action: onResume)
+                Button("SETTINGS", action: onSettings)
+                Button("QUIT TO MENU", action: onQuitToMenu)
             }
+            .buttonStyle(PauseButtonStyle())
         }
-        .allowsHitTesting(false)
+    }
+}
+
+private struct PauseButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 14, weight: .bold, design: .monospaced))
+            .foregroundColor(configuration.isPressed ? .yellow : .white)
+            .frame(width: 220)
+            .padding(.vertical, 6)
+            .overlay(Rectangle().stroke(Color.white.opacity(0.35), lineWidth: 1))
+    }
+}
+
+struct SettingsView: View {
+    @Bindable var settings: GameSettingsStore
+    let difficultyLocked: Bool
+    let onChanged: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.88).ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                Text("SETTINGS")
+                    .font(.system(size: 36, weight: .black, design: .monospaced))
+                    .foregroundColor(.red)
+
+                settingRow("DIFFICULTY") {
+                    Picker("", selection: $settings.difficulty) {
+                        ForEach(GameDifficulty.allCases) { difficulty in
+                            Text(difficulty.displayName).tag(difficulty)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 180)
+                    .disabled(difficultyLocked)
+                }
+
+                if difficultyLocked {
+                    Text("DIFFICULTY CAN BE CHANGED FROM THE MAIN MENU")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.orange)
+                }
+
+                settingRow("MOUSE SENSITIVITY") {
+                    HStack {
+                        Slider(value: $settings.mouseSensitivity, in: 0.5...2.0, step: 0.1)
+                        Text(String(format: "%.1fx", settings.mouseSensitivity))
+                            .frame(width: 48)
+                    }
+                    .frame(width: 220)
+                }
+
+                settingRow("MASTER VOLUME") {
+                    HStack {
+                        Slider(value: $settings.masterVolume, in: 0...1, step: 0.05)
+                        Text("\(Int(settings.masterVolume * 100))%")
+                            .frame(width: 48)
+                    }
+                    .frame(width: 220)
+                }
+
+                settingRow("MINIMAP") {
+                    Toggle("", isOn: $settings.showMinimap)
+                        .labelsHidden()
+                }
+
+                Button("BACK", action: onClose)
+                    .buttonStyle(PauseButtonStyle())
+                    .padding(.top, 12)
+            }
+            .padding(36)
+            .background(Color(red: 0.08, green: 0.08, blue: 0.08))
+            .overlay(Rectangle().stroke(Color.red.opacity(0.8), lineWidth: 2))
+        }
+        .onChange(of: settings.mouseSensitivity) { _, _ in onChanged() }
+        .onChange(of: settings.masterVolume) { _, _ in onChanged() }
+        .onChange(of: settings.showMinimap) { _, _ in onChanged() }
+    }
+
+    private func settingRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundColor(.white)
+                .frame(width: 180, alignment: .trailing)
+            content()
+                .frame(width: 240, alignment: .leading)
+        }
     }
 }
 

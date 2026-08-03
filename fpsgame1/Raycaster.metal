@@ -37,10 +37,8 @@ struct TorchData {
 };
 
 // Shade + fog in one step
-// Output format: BGRA8Unorm texture but CPU pixel buffer uses 0xAARRGGBB (byteOrder32Little + noneSkipFirst)
-// In memory: [B, G, R, A]. Metal float4 for bgra8Unorm: (B, G, R, A)
-// Our UInt32 color is 0xAARRGGBB — in little-endian memory: [BB, GG, RR, AA]
-// bgra8Unorm float4(b, g, r, a) → memory [b, g, r, a] — matches!
+// The shader always returns logical RGBA components. The BGRA texture format
+// handles the physical byte-channel mapping when storing the result.
 inline float4 shadeThenFog(uint color, float shade, float fog, float fogR, float fogG, float fogB) {
     float r = float((color >> 16) & 0xFF) * shade;
     float g = float((color >> 8) & 0xFF) * shade;
@@ -49,8 +47,7 @@ inline float4 shadeThenFog(uint color, float shade, float fog, float fogR, float
     r = r * fog + fogR * invFog;
     g = g * fog + fogG * invFog;
     b = b * fog + fogB * invFog;
-    // bgra8Unorm: float4 maps to (Blue, Green, Red, Alpha) in memory
-    return float4(b / 255.0, g / 255.0, r / 255.0, 1.0);
+    return float4(r / 255.0, g / 255.0, b / 255.0, 1.0);
 }
 
 // Distance-based shade/fog LUT equivalent

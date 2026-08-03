@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var viewModel = GameViewModel()
+    @State private var showSettings = false
 
     var body: some View {
         ZStack {
@@ -16,9 +17,13 @@ struct ContentView: View {
 
             switch viewModel.gameState {
             case .menu:
-                TitleScreenView(onStart: {
-                    viewModel.showBriefing()
-                })
+                TitleScreenView(
+                    hasSavedCampaign: viewModel.hasSavedCampaign,
+                    acceptsEnter: !showSettings,
+                    onNewGame: { viewModel.startNewCampaign() },
+                    onContinue: { viewModel.continueCampaign() },
+                    onSettings: { showSettings = true }
+                )
 
             case .briefing:
                 BriefingScreenView(level: viewModel.currentLevel, onStart: {
@@ -26,11 +31,15 @@ struct ContentView: View {
                 })
 
             case .playing:
-                gamePlayView
+                gamePlayView(captureCursor: true, acceptsInput: true)
 
             case .paused:
-                gamePlayView
-                PauseOverlayView()
+                gamePlayView(captureCursor: false, acceptsInput: !showSettings)
+                PauseOverlayView(
+                    onResume: { viewModel.resumeGame() },
+                    onSettings: { showSettings = true },
+                    onQuitToMenu: { viewModel.returnToMenu() }
+                )
 
             case .dead:
                 DeathScreenView(onRestart: {
@@ -47,6 +56,20 @@ struct ContentView: View {
                         viewModel.advanceToNextLevel()
                     }
                 )
+
+            case .campaignComplete:
+                CampaignCompleteView(onNewCampaign: {
+                    viewModel.newCampaign()
+                })
+            }
+
+            if showSettings {
+                SettingsView(
+                    settings: viewModel.settings,
+                    difficultyLocked: viewModel.gameState != .menu,
+                    onChanged: { viewModel.applySettings() },
+                    onClose: { showSettings = false }
+                )
             }
         }
         .frame(minWidth: 800, minHeight: 500)
@@ -55,7 +78,7 @@ struct ContentView: View {
         }
     }
 
-    private var gamePlayView: some View {
+    private func gamePlayView(captureCursor: Bool, acceptsInput: Bool) -> some View {
         ZStack {
             // Game rendering output
             if let image = viewModel.frameImage {
@@ -72,7 +95,11 @@ struct ContentView: View {
             HUDView(viewModel: viewModel)
 
             // Input capture (transparent overlay)
-            GameInputView(inputManager: viewModel.inputManager)
+            GameInputView(
+                inputManager: viewModel.inputManager,
+                shouldCaptureCursor: captureCursor,
+                acceptsInput: acceptsInput
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

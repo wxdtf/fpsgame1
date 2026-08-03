@@ -137,7 +137,7 @@ struct Enemy: Identifiable {
         }
     }
     
-    mutating func update(deltaTime: Double, playerX: Double, playerY: Double, world: GameWorld) {
+    mutating func update(deltaTime: Double, playerX: Double, playerY: Double, world: GameWorld, speedMultiplier: Double = 1.0) {
         animationTimer += deltaTime
 
         // Only cycle animation frames for non-attack states.
@@ -171,7 +171,7 @@ struct Enemy: Identifiable {
                 state = .chasing
                 alertTimer = 0.5
             } else {
-                moveTowardTarget(deltaTime: deltaTime, world: world)
+                moveTowardTarget(deltaTime: deltaTime, world: world, speedMultiplier: speedMultiplier)
             }
 
         case .chasing:
@@ -184,7 +184,7 @@ struct Enemy: Identifiable {
                     hasDealtDamageThisAttack = false
                 }
             } else {
-                moveToward(targetX: playerX, targetY: playerY, deltaTime: deltaTime, world: world)
+                moveToward(targetX: playerX, targetY: playerY, deltaTime: deltaTime, world: world, speedMultiplier: speedMultiplier)
             }
 
         case .attacking:
@@ -260,13 +260,13 @@ struct Enemy: Identifiable {
     var stuckTimer: Double = 0
     var wallAvoidAngle: Double = 0
 
-    private mutating func moveToward(targetX: Double, targetY: Double, deltaTime: Double, world: GameWorld) {
+    private mutating func moveToward(targetX: Double, targetY: Double, deltaTime: Double, world: GameWorld, speedMultiplier: Double) {
         let dx = targetX - x
         let dy = targetY - y
         let dist = sqrt(dx * dx + dy * dy)
         guard dist > 0.5 else { return }
 
-        let speed = type.speed * deltaTime
+        let speed = type.speed * deltaTime * speedMultiplier
         let radius = 0.25
 
         // Primary direction: straight toward target
@@ -320,7 +320,7 @@ struct Enemy: Identifiable {
         }
     }
 
-    private mutating func moveTowardTarget(deltaTime: Double, world: GameWorld) {
+    private mutating func moveTowardTarget(deltaTime: Double, world: GameWorld, speedMultiplier: Double) {
         guard let target = patrolTarget else {
             state = .idle
             return
@@ -334,6 +334,6 @@ struct Enemy: Identifiable {
             return
         }
         angle = atan2(dy, dx)
-        moveToward(targetX: target.0, targetY: target.1, deltaTime: deltaTime, world: world)
+        moveToward(targetX: target.0, targetY: target.1, deltaTime: deltaTime, world: world, speedMultiplier: speedMultiplier)
     }
 }

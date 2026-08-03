@@ -16,6 +16,10 @@ final class AudioManager {
     private let poolSize = 8
     private var nextNodeIndex = 0
 
+    func setMasterVolume(_ volume: Double) {
+        audioEngine?.mainMixerNode.outputVolume = Float(min(1.0, max(0.0, volume)))
+    }
+
     private init() {
         setupEngine()
     }

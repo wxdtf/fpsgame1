@@ -12,6 +12,7 @@ enum GameStateType {
     case paused
     case dead
     case levelComplete
+    case campaignComplete
 }
 
 enum ProjectileType {
@@ -32,6 +33,7 @@ struct Projectile {
 }
 
 final class GameEngine {
+    let difficulty: GameDifficulty
     var state: GameStateType = .menu
     var world: GameWorld
     var player: Player
@@ -65,8 +67,10 @@ final class GameEngine {
     var enemyAlertedThisFrame: Bool = false
     var enemyHurtThisFrame: Bool = false
     var enemyAttackedThisFrame: EnemyType? = nil
+    private var damageFloorAccumulator: Double = 0
 
-    init() {
+    init(difficulty: GameDifficulty = .normal) {
+        self.difficulty = difficulty
         let data = GameWorld.levelData(for: 1)
         world = GameWorld.createLevel(1)
         player = Player(x: data.playerStartX, y: data.playerStartY, angle: data.playerStartAngle)
@@ -79,19 +83,49 @@ final class GameEngine {
     }
 
     func restart() {
-        loadLevel(1)
+        loadLevel(currentLevel)
         state = .playing
     }
 
+    func makeCheckpoint() -> CampaignCheckpoint {
+        CampaignCheckpoint(
+            level: currentLevel,
+            health: player.health,
+            armor: player.armor,
+            weapons: player.weapons.sorted { $0.rawValue < $1.rawValue },
+            bullets: player.ammo[.bullets] ?? 0,
+            shells: player.ammo[.shells] ?? 0,
+            currentWeapon: player.currentWeapon,
+            difficulty: difficulty
+        )
+    }
+
+    func restoreCheckpoint(_ checkpoint: CampaignCheckpoint) {
+        let level = min(GameWorld.maxLevel, max(1, checkpoint.level))
+        loadLevel(level)
+        player.health = min(GameConstants.maxHealth, max(1, checkpoint.health))
+        player.armor = min(GameConstants.maxArmor, max(0, checkpoint.armor))
+        player.weapons = Set(checkpoint.weapons).union([.fist, .pistol])
+        player.ammo[.bullets] = min(GameConstants.maxBullets, max(0, checkpoint.bullets))
+        player.ammo[.shells] = min(GameConstants.maxShells, max(0, checkpoint.shells))
+        let weapon = player.weapons.contains(checkpoint.currentWeapon) ? checkpoint.currentWeapon : .pistol
+        player.currentWeapon = weapon
+        player.weaponState = WeaponState(type: weapon)
+        state = .paused
+    }
+
     func nextLevel() {
-        currentLevel += 1
-        if currentLevel > GameWorld.maxLevel {
-            currentLevel = 1  // Loop back
+        guard currentLevel < GameWorld.maxLevel else {
+            state = .campaignComplete
+            return
         }
+        currentLevel += 1
         // Keep player weapons and ammo
         let savedWeapons = player.weapons
         let savedAmmo = player.ammo
         let savedWeapon = player.currentWeapon
+        let savedHealth = player.health
+        let savedArmor = player.armor
 
         loadLevel(currentLevel)
 
@@ -99,13 +133,14 @@ final class GameEngine {
         player.ammo = savedAmmo
         player.currentWeapon = savedWeapon
         player.weaponState = WeaponState(type: savedWeapon)
-        // Restore some health between levels
-        player.health = min(GameConstants.maxHealth, player.health + 25)
+        player.health = min(GameConstants.maxHealth, savedHealth + 25)
+        player.armor = savedArmor
         spawnInvincibilityTimer = 1.5
         state = .playing
     }
 
     private func loadLevel(_ level: Int) {
+        currentLevel = level
         let data = GameWorld.levelData(for: level)
         world = GameWorld.createLevel(level)
         player = Player(x: data.playerStartX, y: data.playerStartY, angle: data.playerStartAngle)
@@ -127,13 +162,14 @@ final class GameEngine {
         levelNameTimer = 3.0
         exploredTiles = []
         spawnInvincibilityTimer = 1.5
+        damageFloorAccumulator = 0
         spawnEntities()
         totalEnemies = enemies.count
     }
 
     private func spawnEntities() {
         let data = GameWorld.levelData(for: currentLevel)
-        let healthMult = GameConstants.difficultyHealthMultiplier(for: currentLevel)
+        let healthMult = GameConstants.difficultyHealthMultiplier(for: currentLevel) * difficulty.enemyHealthMultiplier
         enemies = data.enemies.map {
             var e = Enemy(type: $0.0, x: $0.1, y: $0.2)
             e.health = Int(Double(e.health) * healthMult)
@@ -196,7 +232,14 @@ final class GameEngine {
                 else if case .patrolling = enemies[i].state { wasIdle = true }
                 else { wasIdle = false }
                 
-                enemies[i].update(deltaTime: deltaTime, playerX: player.x, playerY: player.y, world: world)
+                let movementMultiplier = GameConstants.difficultySpeedMultiplier(for: currentLevel) * difficulty.enemySpeedMultiplier
+                enemies[i].update(
+                    deltaTime: deltaTime,
+                    playerX: player.x,
+                    playerY: player.y,
+                    world: world,
+                    speedMultiplier: movementMultiplier
+                )
                 
                 if wasIdle, case .chasing = enemies[i].state {
                     enemyAlertedThisFrame = true
@@ -214,8 +257,8 @@ final class GameEngine {
                     let dy = enemies[i].y - player.y
                     let dist = sqrt(dx * dx + dy * dy)
 
-                    let dmgMult = GameConstants.difficultyDamageMultiplier(for: currentLevel)
-                    let spdMult = GameConstants.difficultySpeedMultiplier(for: currentLevel)
+                    let dmgMult = GameConstants.difficultyDamageMultiplier(for: currentLevel) * difficulty.enemyDamageMultiplier
+                    let spdMult = GameConstants.difficultySpeedMultiplier(for: currentLevel) * difficulty.enemySpeedMultiplier
                     let scaledDamage = Int(Double(enemies[i].type.damage) * dmgMult)
 
                     if enemies[i].type.isRanged {
@@ -266,11 +309,15 @@ final class GameEngine {
         // Damage floor check
         let playerTile = world.tileAt(x: Int(player.x), y: Int(player.y))
         if playerTile == .damageFloor {
-            let dmg = Int(5.0 * deltaTime)
+            damageFloorAccumulator += 5.0 * deltaTime
+            let dmg = Int(damageFloorAccumulator)
             if dmg > 0 {
+                damageFloorAccumulator -= Double(dmg)
                 player.takeDamage(dmg)
                 damageFlashTimer = max(damageFlashTimer, 0.1)
             }
+        } else {
+            damageFloorAccumulator = 0
         }
 
         // Explore tiles around player

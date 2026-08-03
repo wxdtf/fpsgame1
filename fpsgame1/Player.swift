@@ -46,12 +46,16 @@ struct Player {
     }
 
     mutating func move(forward: Double, strafe: Double, deltaTime: Double, world: GameWorld, sprint: Bool = false) {
+        let inputLength = hypot(forward, strafe)
+        let inputScale = inputLength > 1.0 ? 1.0 / inputLength : 1.0
+        let normalizedForward = forward * inputScale
+        let normalizedStrafe = strafe * inputScale
         let sprintMult = sprint ? 1.6 : 1.0
         let speed = GameConstants.playerMoveSpeed * deltaTime * sprintMult
-        let moveX = dirX * forward * speed + (-dirY) * strafe * speed
-        let moveY = dirY * forward * speed + dirX * strafe * speed
+        let moveX = dirX * normalizedForward * speed + (-dirY) * normalizedStrafe * speed
+        let moveY = dirY * normalizedForward * speed + dirX * normalizedStrafe * speed
 
-        isMoving = abs(forward) > 0.01 || abs(strafe) > 0.01
+        isMoving = abs(normalizedForward) > 0.01 || abs(normalizedStrafe) > 0.01
         isSprinting = isMoving && sprint
 
         if isMoving {

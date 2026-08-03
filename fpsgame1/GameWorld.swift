@@ -134,6 +134,8 @@ struct GameWorld {
 
     static func createLevel(_ number: Int) -> GameWorld {
         let data = levelData(for: number)
+        let issues = validationIssues(for: data)
+        precondition(issues.isEmpty, issues.joined(separator: "\n"))
         let w = data.layout[0].count
         let h = data.layout.count
         var tiles1D = [TileType](repeating: .empty, count: w * h)
@@ -152,6 +154,122 @@ struct GameWorld {
         var world = GameWorld(width: w, height: h, tiles1D: tiles1D, doors: doors)
         world.rebuildDoorIndex()
         return world
+    }
+
+    /// Validates static level data before it is turned into a live world.
+    /// Reachability accounts for keys, so a key placed behind its own locked door fails.
+    static func validationIssues(for data: LevelData) -> [String] {
+        guard let firstRow = data.layout.first, !firstRow.isEmpty else {
+            return ["Level layout is empty"]
+        }
+
+        let width = firstRow.count
+        let height = data.layout.count
+        var issues: [String] = []
+        for (y, row) in data.layout.enumerated() where row.count != width {
+            issues.append("Row \(y) has width \(row.count), expected \(width)")
+        }
+        guard issues.isEmpty else { return issues }
+
+        func tileAt(_ x: Int, _ y: Int) -> TileType? {
+            guard x >= 0, x < width, y >= 0, y < height else { return nil }
+            return TileType(rawValue: data.layout[y][x])
+        }
+
+        func isSpawnTile(_ tile: TileType?) -> Bool {
+            tile == .empty || tile == .damageFloor
+        }
+
+        let start = (x: Int(data.playerStartX), y: Int(data.playerStartY))
+        if !isSpawnTile(tileAt(start.x, start.y)) {
+            issues.append("Player start (\(start.x), \(start.y)) is not on a walkable spawn tile")
+        }
+
+        var keysByTile: [Int: Set<KeyColor>] = [:]
+        for item in data.items {
+            if case .keyCard(let color) = item.0 {
+                let key = Int(item.2) * width + Int(item.1)
+                keysByTile[key, default: []].insert(color)
+            }
+        }
+
+        var reachable: Set<Int> = []
+        if tileAt(start.x, start.y) != nil {
+            reachable.insert(start.y * width + start.x)
+            var ownedKeys: Set<KeyColor> = []
+            var changed = true
+            while changed {
+                changed = false
+                var queue = reachable.map { (x: $0 % width, y: $0 / width) }
+                var index = 0
+                while index < queue.count {
+                    let position = queue[index]
+                    index += 1
+                    let positionKey = position.y * width + position.x
+                    if let foundKeys = keysByTile[positionKey] {
+                        let oldCount = ownedKeys.count
+                        ownedKeys.formUnion(foundKeys)
+                        if ownedKeys.count != oldCount { changed = true }
+                    }
+                    for (nx, ny) in [
+                        (position.x + 1, position.y), (position.x - 1, position.y),
+                        (position.x, position.y + 1), (position.x, position.y - 1),
+                    ] {
+                        guard let tile = tileAt(nx, ny) else { continue }
+                        let canEnter: Bool
+                        switch tile {
+                        case .empty, .damageFloor, .door:
+                            canEnter = true
+                        case .lockedDoorRed:
+                            canEnter = ownedKeys.contains(.red)
+                        case .lockedDoorBlue:
+                            canEnter = ownedKeys.contains(.blue)
+                        case .lockedDoorYellow:
+                            canEnter = ownedKeys.contains(.yellow)
+                        default:
+                            canEnter = false
+                        }
+                        let key = ny * width + nx
+                        if canEnter && reachable.insert(key).inserted {
+                            queue.append((nx, ny))
+                            changed = true
+                        }
+                    }
+                }
+            }
+        }
+
+        func validateSpawn(kind: String, index: Int, x: Double, y: Double) {
+            let tileX = Int(x)
+            let tileY = Int(y)
+            if !isSpawnTile(tileAt(tileX, tileY)) {
+                issues.append("\(kind) \(index) at (\(tileX), \(tileY)) is not on a walkable spawn tile")
+            } else if !reachable.contains(tileY * width + tileX) {
+                issues.append("\(kind) \(index) at (\(tileX), \(tileY)) is unreachable from player start")
+            }
+        }
+
+        for (index, enemy) in data.enemies.enumerated() {
+            validateSpawn(kind: "Enemy", index: index, x: enemy.1, y: enemy.2)
+        }
+        for (index, item) in data.items.enumerated() {
+            validateSpawn(kind: "Item", index: index, x: item.1, y: item.2)
+        }
+        let exitTiles = data.layout.enumerated().flatMap { y, row in
+            row.enumerated().compactMap { x, rawValue in
+                rawValue == TileType.exitPortal.rawValue ? (x: x, y: y) : nil
+            }
+        }
+        if exitTiles.isEmpty {
+            issues.append("Level has no exit portal")
+        } else if !exitTiles.contains(where: { exit in
+            [(exit.x + 1, exit.y), (exit.x - 1, exit.y),
+             (exit.x, exit.y + 1), (exit.x, exit.y - 1)]
+                .contains(where: { reachable.contains($0.1 * width + $0.0) })
+        }) {
+            issues.append("No exit portal is reachable from player start")
+        }
+        return issues
     }
 
     static func levelData(for number: Int) -> LevelData {
@@ -269,7 +387,7 @@ struct GameWorld {
                 // Armory guard
                 (.soldier, 12.5, 9.5),
                 // Courtyard (upper area)
-                (.imp, 14.5, 3.5),
+                (.imp, 15.5, 3.5),
                 (.soldier, 5.5, 2.5),
                 // Command center room
                 (.demon, 28.5, 9.5),
@@ -361,14 +479,14 @@ struct GameWorld {
                 // Central hub
                 (.soldier, 11.5, 12.5),
                 (.imp, 7.5, 9.5),
-                (.soldier, 18.5, 9.5),
+                (.soldier, 17.5, 9.5),
                 // West wing (armory)
                 (.imp, 2.5, 13.5),
                 (.soldier, 3.5, 7.5),
                 (.demon, 2.5, 2.5),
                 // Hub room (center)
                 (.soldier, 15.5, 16.5),
-                (.imp, 14.5, 19.5),
+                (.imp, 15.5, 20.5),
                 // East wing
                 (.imp, 29.5, 15.5),
                 (.soldier, 28.5, 5.5),
@@ -378,11 +496,11 @@ struct GameWorld {
                 (.soldier, 17.5, 4.5),
                 (.imp, 9.5, 1.5),
                 // South passage
-                (.soldier, 16.5, 29.5),
+                (.soldier, 20.5, 29.5),
             ],
             items: [
                 // Entry — bullets
-                (.ammoBullets(amount: 20), 2.5, 28.5),
+                (.ammoBullets(amount: 20), 3.5, 29.5),
                 // West wing — armory (RED KEY here)
                 (.keyCard(color: .red), 2.5, 7.5),
                 (.shotgunPickup, 2.5, 23.5),
@@ -392,7 +510,7 @@ struct GameWorld {
                 (.healthPack(amount: 25), 15.5, 15.5),
                 (.ammoBullets(amount: 20), 7.5, 11.5),
                 // Hub room
-                (.healthPack(amount: 25), 15.5, 18.5),
+                (.healthPack(amount: 25), 14.5, 18.5),
                 // East wing — supplies
                 (.healthPack(amount: 50), 29.5, 17.5),
                 (.ammoBullets(amount: 30), 30.5, 2.5),
@@ -430,7 +548,7 @@ struct GameWorld {
             [3,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,3], // 7
             [3,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,3], // 8
             [3,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,3,3,3,3,4,3,3,0,0,0,4,0,0,3], // 9
-            [3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,3,0,0,0,0,0,3,0,0,0,3,0,0,3], // 10
+            [3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,3,0,0,10,10,0,3,0,0,0,3,0,0,3], // 10  TOXIC FLOOR at (21-22,10)
             [3,0,0,0,0,0,3,0,0,0,0,0,0,0,0,3,0,0,3,0,0,0,0,0,3,0,0,0,3,0,0,3], // 11
             [3,3,3,3,3,3,3,3,3,3,3,3,0,0,0,3,0,0,3,0,0,3,0,0,3,0,0,0,3,3,3,3], // 12
             [3,3,3,3,3,3,3,3,0,0,0,3,0,0,0,3,0,0,3,0,0,0,0,0,3,0,0,0,0,0,0,3], // 13
@@ -477,12 +595,12 @@ struct GameWorld {
                 (.demon, 21.5, 11.5),
                 (.soldier, 23.5, 13.5),
                 // Central gallery
-                (.imp, 10.5, 17.5),
+                (.imp, 10.5, 16.5),
                 (.soldier, 15.5, 16.5),
                 // Lower passages
                 (.demon, 7.5, 22.5),
                 (.imp, 12.5, 23.5),
-                (.soldier, 16.5, 22.5),
+                (.soldier, 16.5, 21.5),
                 // South barracks
                 (.demon, 3.5, 27.5),
                 (.soldier, 7.5, 29.5),
@@ -513,8 +631,8 @@ struct GameWorld {
                 (.healthPack(amount: 25), 12.5, 16.5),
                 (.ammoShells(amount: 12), 4.5, 19.5),
                 // Lower passages
-                (.healthPack(amount: 50), 15.5, 22.5),
-                (.ammoBullets(amount: 30), 9.5, 26.5),
+                (.healthPack(amount: 50), 15.5, 21.5),
+                (.ammoBullets(amount: 30), 8.5, 26.5),
                 // South barracks
                 (.healthPack(amount: 25), 2.5, 26.5),
                 (.ammoShells(amount: 10), 6.5, 28.5),

@@ -5,14 +5,14 @@
 
 import Foundation
 
-enum WeaponType: Hashable, CaseIterable {
+enum WeaponType: String, Hashable, CaseIterable, Codable {
     case fist
     case pistol
     case shotgun
     case chaingun
 }
 
-enum AmmoType: Hashable {
+enum AmmoType: String, Hashable, Codable {
     case bullets
     case shells
 }

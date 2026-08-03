@@ -40,8 +40,10 @@ final class GameViewModel {
     var faceFrameIndex: Int = 0
     var objectiveText: String = ""
     var objectiveComplete: Bool = false
+    var hasSavedCampaign: Bool = false
 
-    let inputManager = InputManager()
+    let inputManager: InputManager
+    let settings: GameSettingsStore
 
     private var gameEngine: GameEngine?
     private var metalRenderer: MetalRenderer?
@@ -51,6 +53,7 @@ final class GameViewModel {
     private var lastFrameTime: CFTimeInterval = 0
     private var doomFace: DoomFace?
     private let audio = AudioManager.shared
+    private let progressStore: CampaignProgressStore
 
     private var prevPlayerHealth: Int = 100
     private var prevKillCount: Int = 0
@@ -63,14 +66,44 @@ final class GameViewModel {
     private var levelTransitionTimer: Double = 0
     private var isTransitioningLevel: Bool = false
 
-    func showBriefing() {
-        // If no engine yet (first time from menu), create one to know the level
-        if gameEngine == nil {
-            let engine = GameEngine()
-            self.gameEngine = engine
-        }
+    convenience init() {
+        self.init(settings: GameSettingsStore(), progressStore: CampaignProgressStore())
+    }
+
+    init(settings: GameSettingsStore, progressStore: CampaignProgressStore) {
+        self.settings = settings
+        self.progressStore = progressStore
+        inputManager = InputManager()
+        hasSavedCampaign = progressStore.hasCheckpoint
+        showMinimap = settings.showMinimap
+        applySettings()
+    }
+
+    func startNewCampaign() {
+        clearInput()
+        let engine = GameEngine(difficulty: settings.difficulty)
+        engine.state = .paused
+        gameEngine = engine
+        progressStore.clear()
+        progressStore.save(engine.makeCheckpoint())
+        hasSavedCampaign = true
         gameState = .briefing
-        currentLevel = gameEngine?.currentLevel ?? 1
+        currentLevel = 1
+        prevGameState = .paused
+    }
+
+    func continueCampaign() {
+        guard let checkpoint = progressStore.load() else {
+            hasSavedCampaign = false
+            return
+        }
+        clearInput()
+        let engine = GameEngine(difficulty: checkpoint.difficulty)
+        engine.restoreCheckpoint(checkpoint)
+        gameEngine = engine
+        gameState = .briefing
+        currentLevel = engine.currentLevel
+        prevGameState = .paused
     }
 
     /// Called when player presses enter on the briefing screen
@@ -88,6 +121,9 @@ final class GameViewModel {
         guard let engine = gameEngine else { return }
         engine.state = .playing
         gameState = .playing  // Explicitly exit briefing state
+        levelTransitionOpacity = 0
+        levelTransitionTimer = 0
+        isTransitioningLevel = false
 
         // Try Metal renderer first, fall back to CPU
         if metalRenderer == nil && cpuRenderer == nil {
@@ -168,13 +204,34 @@ final class GameViewModel {
         inputManager.mouseHeld = false
         inputManager.mouseClicked = false
 
-        gameEngine?.nextLevel()
+        guard let engine = gameEngine else { return }
+        engine.nextLevel()
+        if engine.state == .campaignComplete {
+            audio.stopBGM()
+            stopGameLoop()
+            progressStore.clear()
+            hasSavedCampaign = false
+            gameState = .campaignComplete
+            currentLevel = engine.currentLevel
+            prevGameState = .campaignComplete
+            return
+        }
         // Pause engine during briefing so it doesn't update in background
-        gameEngine?.state = .paused
+        engine.state = .paused
+        progressStore.save(engine.makeCheckpoint())
+        hasSavedCampaign = true
         audio.stopBGM()
         // Show briefing before starting the next level
         gameState = .briefing
-        currentLevel = gameEngine?.currentLevel ?? 1
+        currentLevel = engine.currentLevel
+    }
+
+    func newCampaign() {
+        levelTransitionOpacity = 0
+        levelTransitionTimer = 0
+        isTransitioningLevel = false
+        audio.stopBGM()
+        startNewCampaign()
     }
 
     /// Called from briefing screen when player presses enter to begin next level
@@ -199,15 +256,53 @@ final class GameViewModel {
     }
 
     func stopGame() {
+        stopGameLoop()
+        audio.stopBGM()
+    }
+
+    func resumeGame() {
+        guard gameEngine?.state == .paused else { return }
+        togglePause()
+    }
+
+    func returnToMenu() {
+        clearInput()
+        gameEngine?.state = .paused
+        stopGameLoop()
+        audio.stopBGM()
+        gameState = .menu
+        hasSavedCampaign = progressStore.hasCheckpoint
+    }
+
+    func applySettings() {
+        inputManager.mouseSensitivity = settings.mouseSensitivity
+        audio.setMasterVolume(settings.masterVolume)
+        showMinimap = settings.showMinimap
+    }
+
+    private func clearInput() {
+        inputManager.keys.removeAll()
+        inputManager.mouseDeltaX = 0
+        inputManager.mouseDeltaY = 0
+        inputManager.mouseHeld = false
+        inputManager.mouseClicked = false
+        prevEscapeState = false
+        prevTabState = false
+    }
+
+    private func stopGameLoop() {
         timer?.cancel()
         timer = nil
-        audio.stopBGM()
     }
 
     func togglePause() {
         guard let engine = gameEngine else { return }
         if engine.state == .playing {
             engine.state = .paused
+            inputManager.mouseHeld = false
+            inputManager.mouseClicked = false
+            inputManager.mouseDeltaX = 0
+            inputManager.mouseDeltaY = 0
         } else if engine.state == .paused {
             engine.state = .playing
             lastFrameTime = CACurrentMediaTime()
@@ -255,7 +350,8 @@ final class GameViewModel {
 
             // Toggle minimap with TAB (edge detection)
             if input.tabPressed && !prevTabState {
-                showMinimap.toggle()
+                settings.showMinimap.toggle()
+                showMinimap = settings.showMinimap
             }
             prevTabState = input.tabPressed
 
@@ -347,6 +443,7 @@ final class GameViewModel {
                 levelTransitionOpacity = 0
             case .dead:
                 audio.stopBGM()
+                stopGameLoop()
             case .paused:
                 audio.stopBGM()
             case .playing where prevGameState == .paused:
@@ -364,19 +461,19 @@ final class GameViewModel {
             if levelTransitionTimer >= 0.8 {
                 isTransitioningLevel = false
                 updateUIState()
+                stopGameLoop()
                 return
             }
             // Don't update game state to levelComplete until fade is done
             // Keep rendering the last frame with increasing darkness
-            return
+        } else {
+            // Always update UI state so SwiftUI sees state transitions (dead/levelComplete)
+            updateUIState()
         }
-
-        // Always update UI state so SwiftUI sees state transitions (dead/levelComplete)
-        updateUIState()
 
         // Allow rendering during death animation too
         let isDying = engine.deathAnimTimer > 0 && engine.state == .playing
-        guard engine.state == .playing || isDying else { return }
+        guard engine.state == .playing || isDying || isTransitioningLevel else { return }
 
         // Render
         autoreleasepool {
@@ -497,7 +594,7 @@ final class GameViewModel {
     private func updateUIState() {
         guard let engine = gameEngine else { return }
         // Don't overwrite briefing state — it's managed by the view model
-        if gameState == .briefing { return }
+        if gameState == .briefing || gameState == .menu { return }
         gameState = engine.state
         health = engine.player.health
         armor = engine.player.armor
