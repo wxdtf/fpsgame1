@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum EnemyType: Int {
+enum EnemyType: Int, Codable {
     case imp = 0
     case demon = 1
     case soldier = 2
@@ -84,6 +84,9 @@ struct Enemy: Identifiable {
     var alertTimer: Double = 0
     var patrolTarget: (Double, Double)?
     var hasDealtDamageThisAttack: Bool = false
+    var navigationPath: [Int] = []
+    var navigationTargetTile: Int?
+    var navigationRepathTimer: Double = 0
 
     init(type: EnemyType, x: Double, y: Double) {
         self.type = type
@@ -153,6 +156,7 @@ struct Enemy: Identifiable {
         }
 
         attackCooldown = max(0, attackCooldown - deltaTime)
+        navigationRepathTimer = max(0, navigationRepathTimer - deltaTime)
 
         let dx = playerX - x
         let dy = playerY - y
@@ -176,15 +180,20 @@ struct Enemy: Identifiable {
 
         case .chasing:
             angle = angleToPlayer
-            if distToPlayer <= type.attackRange && canSeePlayer(playerX: playerX, playerY: playerY, world: world) {
+            let hasLineOfSight = canSeePlayer(playerX: playerX, playerY: playerY, world: world)
+            if distToPlayer <= type.attackRange && hasLineOfSight {
                 if attackCooldown <= 0 {
                     state = .attacking
                     animationFrame = 0
                     animationTimer = 0
                     hasDealtDamageThisAttack = false
                 }
-            } else {
+            } else if hasLineOfSight {
+                navigationPath.removeAll(keepingCapacity: true)
+                navigationTargetTile = nil
                 moveToward(targetX: playerX, targetY: playerY, deltaTime: deltaTime, world: world, speedMultiplier: speedMultiplier)
+            } else {
+                moveAlongPath(targetX: playerX, targetY: playerY, deltaTime: deltaTime, world: world, speedMultiplier: speedMultiplier)
             }
 
         case .attacking:
@@ -260,6 +269,99 @@ struct Enemy: Identifiable {
     var stuckTimer: Double = 0
     var wallAvoidAngle: Double = 0
 
+    private mutating func moveAlongPath(
+        targetX: Double,
+        targetY: Double,
+        deltaTime: Double,
+        world: GameWorld,
+        speedMultiplier: Double
+    ) {
+        let targetTile = Int(targetY) * world.width + Int(targetX)
+        if navigationTargetTile != targetTile || navigationRepathTimer <= 0 || navigationPath.isEmpty {
+            navigationPath = findPath(targetX: targetX, targetY: targetY, world: world)
+            navigationTargetTile = targetTile
+            navigationRepathTimer = 0.4
+        }
+
+        while let first = navigationPath.first {
+            let waypointX = Double(first % world.width) + 0.5
+            let waypointY = Double(first / world.width) + 0.5
+            if hypot(waypointX - x, waypointY - y) < 0.3 {
+                navigationPath.removeFirst()
+            } else {
+                angle = atan2(waypointY - y, waypointX - x)
+                moveToward(
+                    targetX: waypointX,
+                    targetY: waypointY,
+                    deltaTime: deltaTime,
+                    world: world,
+                    speedMultiplier: speedMultiplier
+                )
+                return
+            }
+        }
+
+        // A changing door can invalidate a route between replans. Keep steering rather
+        // than freezing, then retry the grid route on the next navigation interval.
+        moveToward(
+            targetX: targetX,
+            targetY: targetY,
+            deltaTime: deltaTime,
+            world: world,
+            speedMultiplier: speedMultiplier
+        )
+    }
+
+    private func findPath(targetX: Double, targetY: Double, world: GameWorld) -> [Int] {
+        let startX = Int(x)
+        let startY = Int(y)
+        let goalX = Int(targetX)
+        let goalY = Int(targetY)
+        guard startX >= 0, startX < world.width, startY >= 0, startY < world.height,
+              goalX >= 0, goalX < world.width, goalY >= 0, goalY < world.height else { return [] }
+
+        let start = startY * world.width + startX
+        let goal = goalY * world.width + goalX
+        guard start != goal else { return [] }
+
+        var queue = [start]
+        queue.reserveCapacity(world.width * world.height)
+        var cursor = 0
+        var predecessor: [Int: Int] = [start: -1]
+
+        while cursor < queue.count {
+            let current = queue[cursor]
+            cursor += 1
+            if current == goal { break }
+            let currentX = current % world.width
+            let currentY = current / world.width
+
+            for (nextX, nextY) in [
+                (currentX + 1, currentY), (currentX - 1, currentY),
+                (currentX, currentY + 1), (currentX, currentY - 1),
+            ] {
+                guard nextX >= 0, nextX < world.width, nextY >= 0, nextY < world.height else { continue }
+                let next = nextY * world.width + nextX
+                guard predecessor[next] == nil else { continue }
+                let centerX = Double(nextX) + 0.5
+                let centerY = Double(nextY) + 0.5
+                guard next == goal || world.isPassable(x: centerX, y: centerY, radius: 0.25) else { continue }
+                predecessor[next] = current
+                queue.append(next)
+            }
+        }
+
+        guard predecessor[goal] != nil else { return [] }
+        var reversedPath: [Int] = []
+        var step = goal
+        while step != start {
+            reversedPath.append(step)
+            guard let previous = predecessor[step] else { return [] }
+            step = previous
+        }
+        return Array(reversedPath.reversed())
+    }
+
     private mutating func moveToward(targetX: Double, targetY: Double, deltaTime: Double, world: GameWorld, speedMultiplier: Double) {
         let dx = targetX - x
         let dy = targetY - y
@@ -311,8 +413,22 @@ struct Enemy: Identifiable {
                 } else if world.isPassable(x: slide2X, y: slide2Y, radius: radius) {
                     wallAvoidAngle = atan2(perpY2, perpX2)
                 } else {
-                    // Random jitter to escape corners
-                    wallAvoidAngle = Double.random(in: 0...(2 * .pi))
+                    // Deterministic fallback avoids corner jitter and keeps tests/replays stable.
+                    let targetAngle = atan2(targetY - y, targetX - x)
+                    let candidates = [
+                        targetAngle + .pi / 2, targetAngle - .pi / 2,
+                        targetAngle + .pi / 4, targetAngle - .pi / 4,
+                        targetAngle + .pi,
+                    ]
+                    if let escapeAngle = candidates.first(where: { candidate in
+                        world.isPassable(
+                            x: x + cos(candidate) * speed,
+                            y: y + sin(candidate) * speed,
+                            radius: radius
+                        )
+                    }) {
+                        wallAvoidAngle = escapeAngle
+                    }
                 }
             }
         } else {

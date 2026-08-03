@@ -7,6 +7,8 @@ import SwiftUI
 
 struct TitleScreenView: View {
     let hasSavedCampaign: Bool
+    let savedCampaignSummary: String
+    let careerSummary: String
     let acceptsEnter: Bool
     let onNewGame: () -> Void
     let onContinue: () -> Void
@@ -62,6 +64,9 @@ struct TitleScreenView: View {
                     if hasSavedCampaign {
                         menuButton("CONTINUE CAMPAIGN", action: onContinue)
                             .opacity(blinkVisible ? 1.0 : 0.65)
+                        Text(savedCampaignSummary)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.orange.opacity(0.9))
                     }
                     menuButton("NEW CAMPAIGN", action: onNewGame)
                     menuButton("SETTINGS", action: onSettings)
@@ -83,6 +88,9 @@ struct TitleScreenView: View {
                 Text("A SwiftUI Raycasting Engine")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.gray)
+                Text(careerSummary)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.gray.opacity(0.8))
                     .padding(.bottom, 20)
             }
         }
@@ -169,6 +177,9 @@ struct VictoryScreenView: View {
     let totalEnemies: Int
     let elapsedTime: Double
     var currentLevel: Int = 1
+    let difficultyName: String
+    let bestTime: Double
+    let isNewBest: Bool
     let onContinue: () -> Void
     @State private var opacity: Double = 0
 
@@ -185,9 +196,17 @@ struct VictoryScreenView: View {
                 VStack(spacing: 12) {
                     statLine("KILLS", value: "\(killCount) / \(totalEnemies)")
                     statLine("TIME", value: formatTime(elapsedTime))
+                    statLine("BEST", value: formatTime(bestTime))
+                    statLine("DIFFICULTY", value: difficultyName)
                     statLine("RATING", value: rating)
                 }
                 .padding(.vertical, 20)
+
+                if isNewBest {
+                    Text("NEW TIME RECORD")
+                        .font(.system(size: 16, weight: .black, design: .monospaced))
+                        .foregroundColor(.orange)
+                }
 
                 Text(currentLevel >= GameWorld.maxLevel
                     ? "PRESS ENTER TO FINISH CAMPAIGN"
@@ -236,6 +255,12 @@ struct VictoryScreenView: View {
 }
 
 struct CampaignCompleteView: View {
+    let difficultyName: String
+    let kills: Int
+    let totalEnemies: Int
+    let elapsedTime: Double
+    let bestTime: Double
+    let isNewBest: Bool
     let onNewCampaign: () -> Void
     @State private var opacity: Double = 0
 
@@ -253,6 +278,20 @@ struct CampaignCompleteView: View {
                     .font(.system(size: 18, weight: .bold, design: .monospaced))
                     .foregroundColor(.yellow)
 
+                VStack(spacing: 10) {
+                    campaignStat("DIFFICULTY", difficultyName)
+                    campaignStat("KILLS", "\(kills) / \(totalEnemies)")
+                    campaignStat("TOTAL TIME", formatTime(elapsedTime))
+                    campaignStat("BEST TIME", formatTime(bestTime))
+                }
+                .padding(.top, 8)
+
+                if isNewBest {
+                    Text("NEW CAMPAIGN RECORD")
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundColor(.orange)
+                }
+
                 Text("PRESS ENTER TO START A NEW CAMPAIGN")
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.8))
@@ -268,10 +307,23 @@ struct CampaignCompleteView: View {
         .onTapGesture { onNewCampaign() }
         .background(KeyPressHandler(onEnter: onNewCampaign))
     }
+
+    private func campaignStat(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundColor(.gray).frame(width: 150, alignment: .trailing)
+            Text(value).foregroundColor(.white).frame(width: 180, alignment: .leading)
+        }
+        .font(.system(size: 15, weight: .bold, design: .monospaced))
+    }
+
+    private func formatTime(_ time: Double) -> String {
+        String(format: "%d:%02d", Int(time) / 60, Int(time) % 60)
+    }
 }
 
 struct BriefingScreenView: View {
     let level: Int
+    let isResume: Bool
     let onStart: () -> Void
     @State private var visibleLines: Int = 0
     @State private var showPrompt: Bool = false
@@ -301,7 +353,7 @@ struct BriefingScreenView: View {
                 }
 
                 if showPrompt {
-                    Text("PRESS ENTER TO BEGIN")
+                    Text(isResume ? "PRESS ENTER TO RESUME AUTOSAVE" : "PRESS ENTER TO BEGIN")
                         .font(.system(size: 14, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
                         .padding(.top, 20)
@@ -366,6 +418,10 @@ struct PauseOverlayView: View {
                 Text("PRESS ESC TO RESUME")
                     .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundColor(.gray)
+
+                Text("PROGRESS SAVED AUTOMATICALLY")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.green.opacity(0.8))
 
                 Button("RESUME", action: onResume)
                 Button("SETTINGS", action: onSettings)

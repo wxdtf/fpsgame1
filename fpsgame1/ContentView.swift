@@ -19,6 +19,8 @@ struct ContentView: View {
             case .menu:
                 TitleScreenView(
                     hasSavedCampaign: viewModel.hasSavedCampaign,
+                    savedCampaignSummary: viewModel.savedCampaignSummary,
+                    careerSummary: viewModel.careerSummary,
                     acceptsEnter: !showSettings,
                     onNewGame: { viewModel.startNewCampaign() },
                     onContinue: { viewModel.continueCampaign() },
@@ -26,7 +28,7 @@ struct ContentView: View {
                 )
 
             case .briefing:
-                BriefingScreenView(level: viewModel.currentLevel, onStart: {
+                BriefingScreenView(level: viewModel.currentLevel, isResume: viewModel.isResumingSession, onStart: {
                     viewModel.startFromBriefing()
                 })
 
@@ -52,15 +54,24 @@ struct ContentView: View {
                     totalEnemies: viewModel.totalEnemies,
                     elapsedTime: viewModel.elapsedTime,
                     currentLevel: viewModel.currentLevel,
+                    difficultyName: viewModel.currentDifficultyName,
+                    bestTime: viewModel.levelBestTime,
+                    isNewBest: viewModel.isNewLevelBest,
                     onContinue: {
                         viewModel.advanceToNextLevel()
                     }
                 )
 
             case .campaignComplete:
-                CampaignCompleteView(onNewCampaign: {
-                    viewModel.newCampaign()
-                })
+                CampaignCompleteView(
+                    difficultyName: viewModel.currentDifficultyName,
+                    kills: viewModel.campaignKills,
+                    totalEnemies: viewModel.campaignEnemies,
+                    elapsedTime: viewModel.campaignElapsedTime,
+                    bestTime: viewModel.campaignBestTime,
+                    isNewBest: viewModel.isNewCampaignBest,
+                    onNewCampaign: { viewModel.newCampaign() }
+                )
             }
 
             if showSettings {

@@ -15,7 +15,7 @@ enum GameStateType {
     case campaignComplete
 }
 
-enum ProjectileType {
+enum ProjectileType: String, Codable {
     case fireball  // Imp — slow, glowing orange
     case bullet    // Soldier — fast, bright tracer
 }
@@ -45,6 +45,13 @@ final class GameEngine {
     var totalEnemies: Int = 0
     var elapsedTime: Double = 0
     var currentLevel: Int = 1
+    private(set) var completedCampaignTime: Double = 0
+    private(set) var completedCampaignKills: Int = 0
+    private(set) var completedCampaignEnemies: Int = 0
+
+    var campaignElapsedTime: Double { completedCampaignTime + elapsedTime }
+    var campaignKillCount: Int { completedCampaignKills + killCount }
+    var campaignEnemyCount: Int { completedCampaignEnemies + totalEnemies }
 
     var damageFlashTimer: Double = 0
     var pickupFlashTimer: Double = 0
@@ -114,11 +121,164 @@ final class GameEngine {
         state = .paused
     }
 
+    func makeSessionSnapshot() -> CampaignSession {
+        CampaignSession(
+            level: currentLevel,
+            difficulty: difficulty,
+            player: PlayerSnapshot(player: player),
+            enemies: enemies.map(EnemySnapshot.init),
+            items: items.map(ItemSnapshot.init),
+            doors: world.doors.map(DoorSnapshot.init),
+            projectiles: projectiles.filter { $0.lifetime > 0 }.map(ProjectileSnapshot.init),
+            killCount: killCount,
+            totalEnemies: totalEnemies,
+            elapsedTime: elapsedTime,
+            exploredTiles: exploredTiles.sorted(),
+            damageFloorAccumulator: damageFloorAccumulator,
+            completedCampaignTime: completedCampaignTime,
+            completedCampaignKills: completedCampaignKills,
+            completedCampaignEnemies: completedCampaignEnemies
+        )
+    }
+
+    /// Restores a mid-level save after validating it against the built-in level layout.
+    /// Returns false without changing the engine when the save is incompatible or corrupt.
+    @discardableResult
+    func restoreSessionSnapshot(_ snapshot: CampaignSession) -> Bool {
+        guard snapshot.difficulty == difficulty,
+              (1...GameWorld.maxLevel).contains(snapshot.level),
+              snapshot.player.health > 0,
+              snapshot.player.x.isFinite, snapshot.player.y.isFinite, snapshot.player.angle.isFinite,
+              snapshot.elapsedTime.isFinite, snapshot.elapsedTime >= 0,
+              snapshot.damageFloorAccumulator.isFinite else { return false }
+
+        let levelData = GameWorld.levelData(for: snapshot.level)
+        let validationWorld = GameWorld.createLevel(snapshot.level)
+        guard snapshot.enemies.count == levelData.enemies.count,
+              snapshot.doors.count == validationWorld.doors.count,
+              validationWorld.isPassable(
+                x: snapshot.player.x,
+                y: snapshot.player.y,
+                radius: GameConstants.playerRadius
+              ),
+              zip(snapshot.enemies, levelData.enemies).allSatisfy({ saved, builtIn in
+                  saved.type == builtIn.0 && saved.x.isFinite && saved.y.isFinite
+              }),
+              zip(snapshot.doors, validationWorld.doors).allSatisfy({ saved, builtIn in
+                  saved.tileX == builtIn.tileX && saved.tileY == builtIn.tileY && saved.openAmount.isFinite
+              }),
+              snapshot.items.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.bobPhase.isFinite }),
+              snapshot.projectiles.allSatisfy({
+                  $0.x.isFinite && $0.y.isFinite && $0.dirX.isFinite && $0.dirY.isFinite &&
+                  $0.speed.isFinite && $0.lifetime.isFinite
+              }) else { return false }
+
+        loadLevel(snapshot.level)
+
+        player.x = snapshot.player.x
+        player.y = snapshot.player.y
+        player.angle = snapshot.player.angle
+        player.health = min(GameConstants.maxHealth, snapshot.player.health)
+        player.armor = min(GameConstants.maxArmor, max(0, snapshot.player.armor))
+        player.weapons = Set(snapshot.player.weapons).union([.fist, .pistol])
+        player.ammo[.bullets] = min(GameConstants.maxBullets, max(0, snapshot.player.bullets))
+        player.ammo[.shells] = min(GameConstants.maxShells, max(0, snapshot.player.shells))
+        player.currentWeapon = player.weapons.contains(snapshot.player.currentWeapon) ? snapshot.player.currentWeapon : .pistol
+        player.keys = Set(snapshot.player.keys)
+        player.berserkTimer = max(0, snapshot.player.berserkTimer)
+        player.bobPhase = snapshot.player.bobPhase
+        player.bobAmount = snapshot.player.bobAmount
+        player.isMoving = false
+        player.isSprinting = false
+        player.weaponState = WeaponState(type: player.currentWeapon)
+        player.weaponState.currentFrame = max(0, snapshot.player.weaponFrame)
+        player.weaponState.frameTimer = max(0, snapshot.player.weaponFrameTimer)
+        player.weaponState.cooldownTimer = max(0, snapshot.player.weaponCooldownTimer)
+        player.weaponState.isFiring = snapshot.player.weaponIsFiring
+        player.weaponState.isSwitching = snapshot.player.weaponIsSwitching
+        player.weaponState.switchProgress = min(1, max(0, snapshot.player.weaponSwitchProgress))
+
+        for index in enemies.indices {
+            let saved = snapshot.enemies[index]
+            enemies[index].x = saved.x
+            enemies[index].y = saved.y
+            enemies[index].angle = saved.angle
+            enemies[index].health = max(0, saved.health)
+            switch saved.behavior {
+            case .idle: enemies[index].state = .idle
+            case .patrolling: enemies[index].state = .patrolling
+            case .chasing: enemies[index].state = .chasing
+            case .attacking: enemies[index].state = .attacking
+            case .hurt: enemies[index].state = .hurt(timer: max(0, saved.behaviorTimer))
+            case .dying: enemies[index].state = .dying(timer: max(0, saved.behaviorTimer))
+            case .dead: enemies[index].state = .dead
+            }
+            enemies[index].animationFrame = max(0, saved.animationFrame)
+            enemies[index].animationTimer = max(0, saved.animationTimer)
+            enemies[index].attackCooldown = max(0, saved.attackCooldown)
+            enemies[index].alertTimer = max(0, saved.alertTimer)
+            if let targetX = saved.patrolTargetX, let targetY = saved.patrolTargetY,
+               targetX.isFinite, targetY.isFinite {
+                enemies[index].patrolTarget = (targetX, targetY)
+            } else {
+                enemies[index].patrolTarget = nil
+            }
+            enemies[index].hasDealtDamageThisAttack = saved.hasDealtDamageThisAttack
+            enemies[index].stuckTimer = max(0, saved.stuckTimer)
+            enemies[index].wallAvoidAngle = saved.wallAvoidAngle
+            enemies[index].navigationPath = saved.navigationPath.filter { $0 >= 0 && $0 < world.width * world.height }
+            enemies[index].navigationTargetTile = saved.navigationTargetTile
+            enemies[index].navigationRepathTimer = max(0, saved.navigationRepathTimer)
+        }
+
+        items = snapshot.items.map { saved in
+            var item = Item(type: saved.type, x: saved.x, y: saved.y)
+            item.isCollected = saved.isCollected
+            item.bobPhase = saved.bobPhase
+            return item
+        }
+
+        for index in world.doors.indices {
+            let saved = snapshot.doors[index]
+            world.doors[index].openAmount = min(1, max(0, saved.openAmount))
+            world.doors[index].isOpening = saved.isOpening
+            world.doors[index].isClosing = saved.isClosing
+            world.doors[index].stayOpenTimer = max(0, saved.stayOpenTimer)
+        }
+
+        projectiles = snapshot.projectiles.compactMap { saved in
+            guard saved.lifetime > 0 else { return nil }
+            return Projectile(
+                x: saved.x, y: saved.y, dirX: saved.dirX, dirY: saved.dirY,
+                speed: max(0, saved.speed), damage: max(0, saved.damage),
+                isEnemy: saved.isEnemy, lifetime: saved.lifetime, type: saved.type
+            )
+        }
+        killCount = min(snapshot.enemies.count, max(0, snapshot.killCount))
+        totalEnemies = snapshot.enemies.count
+        elapsedTime = snapshot.elapsedTime
+        exploredTiles = Set(snapshot.exploredTiles.filter { $0 >= 0 && $0 < world.width * world.height })
+        damageFloorAccumulator = min(1, max(0, snapshot.damageFloorAccumulator))
+        completedCampaignTime = max(0, snapshot.completedCampaignTime)
+        completedCampaignKills = max(0, snapshot.completedCampaignKills)
+        completedCampaignEnemies = max(0, snapshot.completedCampaignEnemies)
+        // Give the player a brief grace period after loading into active combat.
+        spawnInvincibilityTimer = 0.75
+        levelNameTimer = 0
+        statusMessage = "GAME RESTORED"
+        statusMessageTimer = 1.5
+        state = .paused
+        return true
+    }
+
     func nextLevel() {
         guard currentLevel < GameWorld.maxLevel else {
             state = .campaignComplete
             return
         }
+        completedCampaignTime += elapsedTime
+        completedCampaignKills += killCount
+        completedCampaignEnemies += totalEnemies
         currentLevel += 1
         // Keep player weapons and ammo
         let savedWeapons = player.weapons

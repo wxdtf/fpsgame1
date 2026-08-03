@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum ItemType {
+enum ItemType: Codable, Equatable {
     case healthPack(amount: Int)
     case armorVest(amount: Int)
     case ammoBullets(amount: Int)

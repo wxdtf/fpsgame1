@@ -17,7 +17,7 @@ enum AmmoType: String, Hashable, Codable {
     case shells
 }
 
-enum KeyColor: Hashable {
+enum KeyColor: String, Hashable, Codable {
     case red, blue, yellow
 }
 

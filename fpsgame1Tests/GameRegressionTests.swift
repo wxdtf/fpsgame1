@@ -76,6 +76,143 @@ final class GameRegressionTests: XCTestCase {
         XCTAssertEqual(engine.player.ammo[.bullets], 117)
     }
 
+    func testMidLevelSessionRoundTripRestoresWorldState() {
+        let defaults = isolatedDefaults()
+        let store = CampaignProgressStore(defaults: defaults)
+        let engine = GameEngine(difficulty: .hard)
+        engine.state = .playing
+        engine.player.health = 71
+        engine.player.armor = 33
+        engine.player.keys = [.red]
+        engine.player.berserkTimer = 8.5
+        engine.enemies[0].health = 17
+        engine.enemies[0].state = .hurt(timer: 0.12)
+        engine.enemies[0].attackCooldown = 0.7
+        engine.items[0].isCollected = true
+        engine.items.append(Item(type: .ammoBullets(amount: 10), x: 2.5, y: 2.5))
+        if !engine.world.doors.isEmpty {
+            engine.world.doors[0].openAmount = 0.65
+            engine.world.doors[0].isOpening = true
+        }
+        engine.projectiles = [Projectile(
+            x: 3.5, y: 3.5, dirX: 1, dirY: 0,
+            speed: 5, damage: 10, isEnemy: true, lifetime: 1.25, type: .fireball
+        )]
+        engine.killCount = 1
+        engine.elapsedTime = 42.75
+        engine.exploredTiles = [21, 22, 23]
+
+        let snapshot = engine.makeSessionSnapshot()
+        store.save(snapshot)
+        XCTAssertEqual(store.loadSession(), snapshot)
+
+        let restored = GameEngine(difficulty: .hard)
+        XCTAssertTrue(restored.restoreSessionSnapshot(snapshot))
+        XCTAssertEqual(restored.makeSessionSnapshot(), snapshot)
+        XCTAssertEqual(restored.state, .paused)
+    }
+
+    func testLegacyCheckpointMigratesWithoutLosingProgress() throws {
+        let defaults = isolatedDefaults()
+        let checkpoint = CampaignCheckpoint(
+            level: 3, health: 54, armor: 12,
+            weapons: [.fist, .pistol, .shotgun],
+            bullets: 88, shells: 9, currentWeapon: .shotgun, difficulty: .normal
+        )
+        defaults.set(try JSONEncoder().encode(checkpoint), forKey: "campaign.checkpoint.v1")
+
+        let store = CampaignProgressStore(defaults: defaults)
+        XCTAssertEqual(store.load(), checkpoint)
+        XCTAssertNil(store.loadSession())
+        XCTAssertNil(defaults.data(forKey: "campaign.checkpoint.v1"))
+        XCTAssertNotNil(defaults.data(forKey: "campaign.save.v2"))
+    }
+
+    func testPerformanceStatsKeepBestRecordsPerDifficulty() {
+        let defaults = isolatedDefaults()
+        let store = GameStatsStore(defaults: defaults)
+
+        let first = store.recordLevel(
+            level: 1, difficulty: .hard, time: 120, kills: 5, totalEnemies: 8
+        )
+        XCTAssertTrue(first.isNewBestTime)
+        XCTAssertTrue(first.isNewKillRecord)
+
+        let second = store.recordLevel(
+            level: 1, difficulty: .hard, time: 130, kills: 8, totalEnemies: 8
+        )
+        XCTAssertFalse(second.isNewBestTime)
+        XCTAssertTrue(second.isNewKillRecord)
+        XCTAssertEqual(second.bestTime, 120)
+
+        let third = store.recordLevel(
+            level: 1, difficulty: .hard, time: 95, kills: 7, totalEnemies: 8
+        )
+        XCTAssertTrue(third.isNewBestTime)
+        XCTAssertFalse(third.isNewKillRecord)
+        XCTAssertEqual(third.maxKills, 8)
+        XCTAssertEqual(third.completionCount, 3)
+
+        let restored = GameStatsStore(defaults: defaults)
+        XCTAssertEqual(restored.performance(level: 1, difficulty: .hard)?.bestTime, 95)
+        XCTAssertNil(restored.performance(level: 1, difficulty: .easy))
+        XCTAssertEqual(restored.lifetimeKills, 20)
+    }
+
+    func testEnemyNavigatesAroundBlockingWall() {
+        var tiles = (0..<81).map { index -> TileType in
+            let x = index % 9
+            let y = index / 9
+            if x == 0 || x == 8 || y == 0 || y == 8 { return .brickWall }
+            if x == 4 && y <= 6 { return .brickWall }
+            return .empty
+        }
+        // Keep the enemy's starting side and the gap explicitly walkable.
+        tiles[2 * 9 + 2] = .empty
+        tiles[7 * 9 + 4] = .empty
+        var world = GameWorld(width: 9, height: 9, tiles1D: tiles, doors: [])
+        world.rebuildDoorIndex()
+
+        var enemy = Enemy(type: .demon, x: 2.5, y: 2.5)
+        enemy.state = .chasing
+        let initialDistance = hypot(6.5 - enemy.x, 2.5 - enemy.y)
+        for _ in 0..<720 {
+            enemy.update(
+                deltaTime: 1.0 / 60.0,
+                playerX: 6.5,
+                playerY: 2.5,
+                world: world
+            )
+        }
+
+        XCTAssertLessThan(hypot(6.5 - enemy.x, 2.5 - enemy.y), initialDistance)
+        XCTAssertGreaterThan(enemy.x, 4.0, "Enemy should route through the gap instead of sticking to the wall")
+    }
+
+    func testAllLevelsRemainStableDuringLongSimulation() {
+        let noInput = InputManager.InputState()
+        for targetLevel in 1...GameWorld.maxLevel {
+            let engine = GameEngine(difficulty: .hard)
+            if targetLevel > 1 {
+                for _ in 2...targetLevel { engine.nextLevel() }
+            }
+            engine.player.health = 1_000_000
+            engine.state = .playing
+
+            // Thirty seconds per level at 60 Hz exercises AI, projectiles, doors and timers.
+            for _ in 0..<1_800 {
+                engine.update(deltaTime: 1.0 / 60.0, input: noInput)
+            }
+
+            XCTAssertTrue(engine.player.x.isFinite && engine.player.y.isFinite)
+            XCTAssertTrue(engine.enemies.allSatisfy { $0.x.isFinite && $0.y.isFinite })
+            XCTAssertTrue(engine.projectiles.allSatisfy {
+                $0.x.isFinite && $0.y.isFinite && $0.lifetime.isFinite
+            })
+            XCTAssertLessThan(engine.projectiles.count, 100)
+        }
+    }
+
     func testSettingsPersistAndClampValues() {
         let defaults = isolatedDefaults()
         let settings = GameSettingsStore(defaults: defaults)

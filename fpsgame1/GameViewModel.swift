@@ -41,6 +41,17 @@ final class GameViewModel {
     var objectiveText: String = ""
     var objectiveComplete: Bool = false
     var hasSavedCampaign: Bool = false
+    var currentDifficultyName: String = GameDifficulty.normal.displayName
+    var levelBestTime: Double = 0
+    var isNewLevelBest: Bool = false
+    var campaignElapsedTime: Double = 0
+    var campaignKills: Int = 0
+    var campaignEnemies: Int = 0
+    var campaignBestTime: Double = 0
+    var isNewCampaignBest: Bool = false
+    var savedCampaignSummary: String = ""
+    var careerSummary: String = ""
+    var isResumingSession: Bool = false
 
     let inputManager: InputManager
     let settings: GameSettingsStore
@@ -54,6 +65,7 @@ final class GameViewModel {
     private var doomFace: DoomFace?
     private let audio = AudioManager.shared
     private let progressStore: CampaignProgressStore
+    private let statsStore: GameStatsStore
 
     private var prevPlayerHealth: Int = 100
     private var prevKillCount: Int = 0
@@ -65,16 +77,24 @@ final class GameViewModel {
     private var prevTabState: Bool = false
     private var levelTransitionTimer: Double = 0
     private var isTransitioningLevel: Bool = false
+    private var lastAutosaveElapsedTime: Double = 0
+    private let autosaveInterval: Double = 10
 
     convenience init() {
-        self.init(settings: GameSettingsStore(), progressStore: CampaignProgressStore())
+        self.init(
+            settings: GameSettingsStore(),
+            progressStore: CampaignProgressStore(),
+            statsStore: GameStatsStore()
+        )
     }
 
-    init(settings: GameSettingsStore, progressStore: CampaignProgressStore) {
+    init(settings: GameSettingsStore, progressStore: CampaignProgressStore, statsStore: GameStatsStore) {
         self.settings = settings
         self.progressStore = progressStore
+        self.statsStore = statsStore
         inputManager = InputManager()
         hasSavedCampaign = progressStore.hasCheckpoint
+        refreshPersistentSummaries()
         showMinimap = settings.showMinimap
         applySettings()
     }
@@ -85,10 +105,15 @@ final class GameViewModel {
         engine.state = .paused
         gameEngine = engine
         progressStore.clear()
-        progressStore.save(engine.makeCheckpoint())
+        progressStore.save(engine.makeSessionSnapshot())
+        lastAutosaveElapsedTime = 0
         hasSavedCampaign = true
         gameState = .briefing
         currentLevel = 1
+        currentDifficultyName = engine.difficulty.displayName
+        isNewLevelBest = false
+        isNewCampaignBest = false
+        isResumingSession = false
         prevGameState = .paused
     }
 
@@ -99,10 +124,22 @@ final class GameViewModel {
         }
         clearInput()
         let engine = GameEngine(difficulty: checkpoint.difficulty)
-        engine.restoreCheckpoint(checkpoint)
+        if let session = progressStore.loadSession() {
+            if !engine.restoreSessionSnapshot(session) {
+                engine.restoreCheckpoint(checkpoint)
+                isResumingSession = false
+            } else {
+                isResumingSession = true
+            }
+        } else {
+            engine.restoreCheckpoint(checkpoint)
+            isResumingSession = false
+        }
         gameEngine = engine
+        lastAutosaveElapsedTime = engine.elapsedTime
         gameState = .briefing
         currentLevel = engine.currentLevel
+        currentDifficultyName = engine.difficulty.displayName
         prevGameState = .paused
     }
 
@@ -165,6 +202,7 @@ final class GameViewModel {
         inputManager.mouseClicked = false
 
         gameEngine?.restart()
+        saveCurrentSession(showMessage: false)
         gameState = .playing
         if useGPU, let engine = gameEngine {
             metalRenderer?.uploadWorldData(world: engine.world)
@@ -191,6 +229,8 @@ final class GameViewModel {
         // Reset level but keep engine paused during briefing
         gameEngine?.restart()
         gameEngine?.state = .paused
+        saveCurrentSession(showMessage: false)
+        isResumingSession = false
         audio.stopBGM()
         gameState = .briefing
         currentLevel = gameEngine?.currentLevel ?? 1
@@ -207,10 +247,22 @@ final class GameViewModel {
         guard let engine = gameEngine else { return }
         engine.nextLevel()
         if engine.state == .campaignComplete {
+            let update = statsStore.recordCampaign(
+                difficulty: engine.difficulty,
+                time: engine.campaignElapsedTime,
+                kills: engine.campaignKillCount,
+                totalEnemies: engine.campaignEnemyCount
+            )
+            campaignElapsedTime = engine.campaignElapsedTime
+            campaignKills = engine.campaignKillCount
+            campaignEnemies = engine.campaignEnemyCount
+            campaignBestTime = update.bestTime
+            isNewCampaignBest = update.isNewBestTime
             audio.stopBGM()
             stopGameLoop()
             progressStore.clear()
             hasSavedCampaign = false
+            savedCampaignSummary = ""
             gameState = .campaignComplete
             currentLevel = engine.currentLevel
             prevGameState = .campaignComplete
@@ -218,12 +270,14 @@ final class GameViewModel {
         }
         // Pause engine during briefing so it doesn't update in background
         engine.state = .paused
-        progressStore.save(engine.makeCheckpoint())
+        progressStore.save(engine.makeSessionSnapshot())
+        lastAutosaveElapsedTime = engine.elapsedTime
         hasSavedCampaign = true
         audio.stopBGM()
         // Show briefing before starting the next level
         gameState = .briefing
         currentLevel = engine.currentLevel
+        isResumingSession = false
     }
 
     func newCampaign() {
@@ -256,6 +310,7 @@ final class GameViewModel {
     }
 
     func stopGame() {
+        saveCurrentSession(showMessage: false)
         stopGameLoop()
         audio.stopBGM()
     }
@@ -267,11 +322,13 @@ final class GameViewModel {
 
     func returnToMenu() {
         clearInput()
+        saveCurrentSession(showMessage: false)
         gameEngine?.state = .paused
         stopGameLoop()
         audio.stopBGM()
         gameState = .menu
         hasSavedCampaign = progressStore.hasCheckpoint
+        refreshPersistentSummaries()
     }
 
     func applySettings() {
@@ -303,6 +360,7 @@ final class GameViewModel {
             inputManager.mouseClicked = false
             inputManager.mouseDeltaX = 0
             inputManager.mouseDeltaY = 0
+            saveCurrentSession(showMessage: true)
         } else if engine.state == .paused {
             engine.state = .playing
             lastFrameTime = CACurrentMediaTime()
@@ -362,6 +420,11 @@ final class GameViewModel {
             let oldBobPhase = engine.player.bobPhase
 
             engine.update(deltaTime: deltaTime, input: input)
+
+            if engine.elapsedTime - lastAutosaveElapsedTime >= autosaveInterval,
+               !engine.player.isDead, engine.state == .playing {
+                saveCurrentSession(showMessage: true)
+            }
 
             // --- Sound effects ---
 
@@ -435,6 +498,7 @@ final class GameViewModel {
         if currentState != prevGameState {
             switch currentState {
             case .levelComplete:
+                recordLevelCompletion(engine)
                 audio.stopBGM()
                 audio.playLevelComplete()
                 // Start fade-to-black transition
@@ -602,6 +666,7 @@ final class GameViewModel {
         totalEnemies = engine.totalEnemies
         elapsedTime = engine.elapsedTime
         currentLevel = engine.currentLevel
+        currentDifficultyName = engine.difficulty.displayName
         recentDamage = engine.damageFlashTimer > 0
         recentPickup = engine.pickupFlashTimer > 0
         lastDamageDirection = engine.lastDamageDirection
@@ -674,6 +739,49 @@ final class GameViewModel {
                 playerAngle: playerAngle
             )
         }
+    }
+
+    private func saveCurrentSession(showMessage: Bool) {
+        guard let engine = gameEngine,
+              engine.player.health > 0,
+              engine.state == .playing || engine.state == .paused else { return }
+        progressStore.save(engine.makeSessionSnapshot())
+        lastAutosaveElapsedTime = engine.elapsedTime
+        hasSavedCampaign = true
+        refreshPersistentSummaries()
+        if showMessage {
+            engine.statusMessage = "GAME SAVED"
+            engine.statusMessageTimer = 1.5
+        }
+    }
+
+    private func recordLevelCompletion(_ engine: GameEngine) {
+        let update = statsStore.recordLevel(
+            level: engine.currentLevel,
+            difficulty: engine.difficulty,
+            time: engine.elapsedTime,
+            kills: engine.killCount,
+            totalEnemies: engine.totalEnemies
+        )
+        levelBestTime = update.bestTime
+        isNewLevelBest = update.isNewBestTime
+        refreshPersistentSummaries()
+    }
+
+    private func refreshPersistentSummaries() {
+        if let summary = progressStore.summary {
+            let timeText: String
+            if let elapsed = summary.elapsedTime {
+                timeText = String(format: " · %d:%02d", Int(elapsed) / 60, Int(elapsed) % 60)
+            } else {
+                timeText = ""
+            }
+            let saveType = summary.isMidLevel ? "AUTOSAVE" : "CHECKPOINT"
+            savedCampaignSummary = "LEVEL \(summary.level) · \(summary.difficulty.displayName)\(timeText) · \(saveType)"
+        } else {
+            savedCampaignSummary = ""
+        }
+        careerSummary = "CAREER KILLS \(statsStore.lifetimeKills) · CAMPAIGNS \(statsStore.completedCampaigns)"
     }
 
     var faceFramePixels: [UInt32] {
