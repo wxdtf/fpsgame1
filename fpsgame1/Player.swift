@@ -22,8 +22,9 @@ struct Player {
 
     // Weapons
     var currentWeapon: WeaponType = .pistol
-    var weapons: Set<WeaponType> = [.fist, .pistol, .shotgun]
-    var ammo: [AmmoType: Int] = [.bullets: 50, .shells: 8]
+    /// Pistol start: the shotgun and chaingun are level pickups (they carry over between levels)
+    var weapons: Set<WeaponType> = [.fist, .pistol]
+    var ammo: [AmmoType: Int] = [.bullets: 50, .shells: 0]
     var weaponState: WeaponState = WeaponState(type: .pistol)
 
     // View bobbing

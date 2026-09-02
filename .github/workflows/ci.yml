@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-levels:
+    name: Validate level data
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run level validator
+        run: python3 tools/validate_levels.py --verbose
+
+  build-macos:
+    name: Build macOS app
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select newest Xcode
+        # MetalRenderer uses the Metal 4 API from the macOS 26 SDK, so the
+        # build needs Xcode 26 or newer. Pick the newest non-beta Xcode on the runner.
+        run: |
+          newest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1)
+          if [ -n "$newest" ]; then
+            sudo xcode-select -s "$newest"
+          fi
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i macosx
+
+      - name: Build (Debug, unsigned)
+        # The project has no shared scheme, so build the target directly.
+        # Signing is disabled: CI has no certificate and the build is not distributed.
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project fpsgame1.xcodeproj \
+            -target fpsgame1 \
+            -configuration Debug \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build

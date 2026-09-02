@@ -142,6 +142,7 @@ struct VictoryScreenView: View {
     let totalEnemies: Int
     let elapsedTime: Double
     var currentLevel: Int = 1
+    var isFinalLevel: Bool = false
     let onContinue: () -> Void
     @State private var opacity: Double = 0
 
@@ -162,7 +163,7 @@ struct VictoryScreenView: View {
                 }
                 .padding(.vertical, 20)
 
-                Text("PRESS ENTER FOR NEXT LEVEL")
+                Text(isFinalLevel ? "PRESS ENTER TO CONTINUE" : "PRESS ENTER FOR NEXT LEVEL")
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.8))
             }
@@ -178,12 +179,7 @@ struct VictoryScreenView: View {
     }
 
     private var rating: String {
-        let killPct = totalEnemies > 0 ? Double(killCount) / Double(totalEnemies) : 0
-        if killPct >= 1.0 && elapsedTime < 120 { return "ULTRA-VIOLENCE" }
-        if killPct >= 1.0 { return "NIGHTMARE" }
-        if killPct >= 0.8 { return "HURT ME PLENTY" }
-        if killPct >= 0.5 { return "HEY, NOT TOO ROUGH" }
-        return "I'M TOO YOUNG TO DIE"
+        performanceRating(kills: killCount, totalEnemies: totalEnemies, time: elapsedTime, parTime: 120)
     }
 
     private func statLine(_ label: String, value: String) -> some View {
@@ -204,6 +200,105 @@ struct VictoryScreenView: View {
         let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+}
+
+/// Shown after the final level: per-level results plus campaign totals
+struct CampaignCompleteView: View {
+    let results: [LevelResult]
+    let onContinue: () -> Void
+    @State private var opacity: Double = 0
+
+    private var totalKills: Int { results.reduce(0) { $0 + $1.kills } }
+    private var totalEnemies: Int { results.reduce(0) { $0 + $1.totalEnemies } }
+    private var totalTime: Double { results.reduce(0) { $0 + $1.time } }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                Text("EPISODE COMPLETE")
+                    .font(.system(size: 44, weight: .black, design: .monospaced))
+                    .foregroundColor(.red)
+                    .shadow(color: .red.opacity(0.5), radius: 12)
+
+                Text("THE FACILITY IS SILENT. FOR NOW.")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(.orange)
+                    .tracking(2)
+
+                VStack(spacing: 8) {
+                    ForEach(results, id: \.level) { result in
+                        HStack {
+                            Text(result.title)
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(.green)
+                                .frame(width: 260, alignment: .leading)
+                            Text("\(result.kills) / \(result.totalEnemies)")
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(.yellow)
+                                .frame(width: 90, alignment: .trailing)
+                            Text(formatClockTime(result.time))
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(.yellow)
+                                .frame(width: 80, alignment: .trailing)
+                        }
+                    }
+                }
+                .padding(.vertical, 12)
+
+                VStack(spacing: 10) {
+                    statLine("TOTAL KILLS", value: "\(totalKills) / \(totalEnemies)")
+                    statLine("TOTAL TIME", value: formatClockTime(totalTime))
+                    statLine("RATING", value: performanceRating(
+                        kills: totalKills, totalEnemies: totalEnemies,
+                        time: totalTime, parTime: 120 * Double(max(1, results.count))))
+                }
+
+                Text("PRESS ENTER TO RETURN TO THE MENU")
+                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.top, 10)
+            }
+            .opacity(opacity)
+        }
+        .onAppear {
+            withAnimation(.easeIn(duration: 1.0)) {
+                opacity = 1.0
+            }
+        }
+        .onTapGesture { onContinue() }
+        .background(KeyPressHandler(onEnter: onContinue))
+    }
+
+    private func statLine(_ label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .foregroundColor(.gray)
+                .frame(width: 160, alignment: .trailing)
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .foregroundColor(.yellow)
+                .frame(width: 220, alignment: .leading)
+        }
+    }
+}
+
+/// DOOM-flavoured performance rating shared by the level and campaign summaries
+func performanceRating(kills: Int, totalEnemies: Int, time: Double, parTime: Double) -> String {
+    let killPct = totalEnemies > 0 ? Double(kills) / Double(totalEnemies) : 0
+    if killPct >= 1.0 && time < parTime { return "ULTRA-VIOLENCE" }
+    if killPct >= 1.0 { return "NIGHTMARE" }
+    if killPct >= 0.8 { return "HURT ME PLENTY" }
+    if killPct >= 0.5 { return "HEY, NOT TOO ROUGH" }
+    return "I'M TOO YOUNG TO DIE"
+}
+
+func formatClockTime(_ time: Double) -> String {
+    let minutes = Int(time) / 60
+    let seconds = Int(time) % 60
+    return String(format: "%d:%02d", minutes, seconds)
 }
 
 struct BriefingScreenView: View {

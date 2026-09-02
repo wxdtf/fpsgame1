@@ -50,6 +50,49 @@ enum TileType: Int {
     }
 }
 
+/// What the player must accomplish before the exit portal lets them leave
+enum MissionObjective {
+    /// Pick up the intel data item
+    case retrieveIntel
+    /// Pick up the demonic artifact item
+    case retrieveArtifact
+    /// Kill every enemy of one type
+    case exterminate(EnemyType)
+    /// Kill every enemy in the level
+    case exterminateAll
+    /// No requirement beyond reaching the exit
+    case reachExit
+
+    /// Short label shown in the HUD
+    var title: String {
+        switch self {
+        case .retrieveIntel: return "RETRIEVE INTEL DATA"
+        case .retrieveArtifact: return "FIND DEMONIC ARTIFACT"
+        case .exterminate(let type): return "EXTERMINATE \(type.pluralName)"
+        case .exterminateAll: return "EXTERMINATE ALL HOSTILES"
+        case .reachExit: return "REACH THE EXIT"
+        }
+    }
+
+    /// Message shown when the player tries to use the exit too early
+    var incompleteMessage: String {
+        switch self {
+        case .retrieveIntel: return "RETRIEVE THE INTEL DATA FIRST"
+        case .retrieveArtifact: return "FIND THE DEMONIC ARTIFACT FIRST"
+        case .exterminate(let type): return "\(type.pluralName) REMAIN"
+        case .exterminateAll: return "HOSTILES REMAIN"
+        case .reachExit: return "OBJECTIVE INCOMPLETE"
+        }
+    }
+
+    var isKillObjective: Bool {
+        switch self {
+        case .exterminate, .exterminateAll: return true
+        default: return false
+        }
+    }
+}
+
 struct DoorState {
     var tileX: Int
     var tileY: Int
@@ -130,6 +173,7 @@ struct GameWorld {
         let playerStartAngle: Double
         let enemies: [(EnemyType, Double, Double)]
         let items: [(ItemType, Double, Double)]
+        let objective: MissionObjective
     }
 
     static func createLevel(_ number: Int) -> GameWorld {
@@ -196,8 +240,9 @@ struct GameWorld {
                 "E1M3: Toxin Refinery",
                 [
                     "The refinery is overrun. Heavy resistance.",
-                    "A RED KEY opens the mid-section.",
-                    "A BLUE KEY beyond opens the final arena.",
+                    "The RED KEY unlocks the vault door to the",
+                    "mid-section. The BLUE KEY opens the lower",
+                    "levels. Beware the toxic nukage pools.",
                     "EXTERMINATE ALL DEMONS. Leave none alive.",
                     "",
                     "Objective: Exterminate all demons."
@@ -269,7 +314,7 @@ struct GameWorld {
                 // Armory guard
                 (.soldier, 12.5, 9.5),
                 // Courtyard (upper area)
-                (.imp, 14.5, 3.5),
+                (.imp, 12.5, 3.5),
                 (.soldier, 5.5, 2.5),
                 // Command center room
                 (.demon, 28.5, 9.5),
@@ -301,9 +346,10 @@ struct GameWorld {
                 // Optional side room — chaingun & berserk
                 (.chaingunPickup, 2.5, 17.5),
                 (.berserkPack, 4.5, 17.5),
-                // Mission item — intel data in command center area
-                (.intelData, 3.5, 26.5),
-            ]
+                // Mission item — intel data in the command center (guarded by the demon)
+                (.intelData, 29.5, 8.5),
+            ],
+            objective: .retrieveIntel
         )
     }
 
@@ -311,8 +357,9 @@ struct GameWorld {
     //
     // Design: Central hub with branching paths. Primarily BRICK walls with
     // torch pillars for a hellish dungeon atmosphere. Exit portal in north wing.
-    // West: Armory (RED KEY here). East: Demon pits. North: Arena → RED LOCKED DOOR → Exit.
-    // ~16 enemies, moderate difficulty.
+    // West: Armory (RED KEY here). East: Demon pits (ARTIFACT here).
+    // North: the exit chamber is sealed by three RED LOCKED DOORS.
+    // ~17 enemies, moderate difficulty.
 
     private static func level2Data() -> LevelData {
         // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal
@@ -321,7 +368,7 @@ struct GameWorld {
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], // 0
             [1,0,0,0,0,0,0,5,0,0,0,1,1,0,0,0,6,0,0,1,1,0,0,0,0,0,0,5,0,0,0,1], // 1  EXIT at (16,1)
             [1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,1], // 2
-            [1,0,0,0,0,0,0,0,0,0,0,4,0,0,0,1,1,0,0,4,0,0,0,0,0,0,0,0,0,0,0,1], // 3
+            [1,0,0,0,0,0,0,0,0,0,0,7,0,0,0,1,1,0,0,7,0,0,0,0,0,0,0,0,0,0,0,1], // 3
             [1,0,0,5,0,0,0,0,5,0,0,1,1,0,0,0,0,0,0,1,1,0,0,5,0,0,0,0,5,0,0,1], // 4
             [1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,1], // 5
             [1,1,1,1,5,1,1,1,1,0,0,1,1,1,1,7,1,1,1,1,1,0,0,1,1,1,1,5,1,1,1,1], // 6  RED LOCKED DOOR at (15,6)
@@ -347,7 +394,7 @@ struct GameWorld {
             [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1], // 26
             [1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,5,1,5,1,1,0,0,0,0,0,0,1,1,1,1,1,1], // 27
             [1,1,1,1,1,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,1,1,1,1,1], // 28
-            [1,0,0,0,1,0,0,0,0,0,5,0,0,5,0,0,0,0,5,0,0,5,0,0,0,0,0,1,0,0,0,1], // 29
+            [1,0,0,0,1,0,0,0,0,0,5,0,0,4,0,0,0,0,5,0,0,5,0,0,0,0,0,1,0,0,0,1], // 29
             [1,0,0,0,4,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,4,0,0,0,1], // 30
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], // 31
         ]
@@ -361,14 +408,14 @@ struct GameWorld {
                 // Central hub
                 (.soldier, 11.5, 12.5),
                 (.imp, 7.5, 9.5),
-                (.soldier, 18.5, 9.5),
+                (.soldier, 17.5, 8.5),
                 // West wing (armory)
                 (.imp, 2.5, 13.5),
                 (.soldier, 3.5, 7.5),
                 (.demon, 2.5, 2.5),
                 // Hub room (center)
                 (.soldier, 15.5, 16.5),
-                (.imp, 14.5, 19.5),
+                (.imp, 13.5, 17.5),
                 // East wing
                 (.imp, 29.5, 15.5),
                 (.soldier, 28.5, 5.5),
@@ -382,7 +429,7 @@ struct GameWorld {
             ],
             items: [
                 // Entry — bullets
-                (.ammoBullets(amount: 20), 2.5, 28.5),
+                (.ammoBullets(amount: 20), 5.5, 29.5),
                 // West wing — armory (RED KEY here)
                 (.keyCard(color: .red), 2.5, 7.5),
                 (.shotgunPickup, 2.5, 23.5),
@@ -392,7 +439,7 @@ struct GameWorld {
                 (.healthPack(amount: 25), 15.5, 15.5),
                 (.ammoBullets(amount: 20), 7.5, 11.5),
                 // Hub room
-                (.healthPack(amount: 25), 15.5, 18.5),
+                (.healthPack(amount: 25), 16.5, 17.5),
                 // East wing — supplies
                 (.healthPack(amount: 50), 29.5, 17.5),
                 (.ammoBullets(amount: 30), 30.5, 2.5),
@@ -405,16 +452,19 @@ struct GameWorld {
                 (.healthPack(amount: 25), 11.5, 27.5),
                 // Mission item — demonic artifact deep in east wing
                 (.demonicArtifact, 29.5, 12.5),
-            ]
+            ],
+            objective: .retrieveArtifact
         )
     }
 
     // MARK: - Level 3: "Toxin Refinery" — Tech/high-tech theme
     //
     // Design: High-tech facility. Primarily TECH walls (blue/green panels).
-    // RED KEY in upper section → RED DOOR to mid section → BLUE KEY → BLUE DOOR to final arena.
+    // RED KEY in the courtyard → toxic vault → RED DOOR to mid section → BLUE KEY in the
+    // central gallery → BLUE DOOR to the lower passages, final arena and exit.
+    // Nukage pools (damage floor) guard the vault, the lower passages and the arena.
     // Start top-left, exit bottom-right.
-    // Dense enemy encounters. ~24 enemies, high difficulty.
+    // Dense enemy encounters. ~25 enemies, high difficulty.
 
     private static func level3Data() -> LevelData {
         // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal
@@ -432,25 +482,25 @@ struct GameWorld {
             [3,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,3,3,3,3,4,3,3,0,0,0,4,0,0,3], // 9
             [3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,3,0,0,0,0,0,3,0,0,0,3,0,0,3], // 10
             [3,0,0,0,0,0,3,0,0,0,0,0,0,0,0,3,0,0,3,0,0,0,0,0,3,0,0,0,3,0,0,3], // 11
-            [3,3,3,3,3,3,3,3,3,3,3,3,0,0,0,3,0,0,3,0,0,3,0,0,3,0,0,0,3,3,3,3], // 12
+            [3,3,3,3,3,3,3,3,3,3,3,3,0,0,0,3,0,0,3,10,0,3,10,10,3,3,3,3,3,3,3,3], // 12
             [3,3,3,3,3,3,3,3,0,0,0,3,0,0,0,3,0,0,3,0,0,0,0,0,3,0,0,0,0,0,0,3], // 13
-            [3,0,0,0,0,0,0,3,0,0,0,3,3,3,3,3,0,0,3,0,0,0,0,0,3,0,0,0,0,0,0,3], // 14
+            [3,0,0,0,0,0,0,3,0,0,0,3,3,3,3,3,3,3,3,0,0,0,0,0,3,0,0,0,0,0,0,3], // 14
             [3,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,3,3,3,7,3,3,3,0,0,0,3,0,0,3], // 15  RED LOCKED DOOR at (21,15)
             [3,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3], // 16
             [3,0,0,3,0,0,0,3,3,3,3,4,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,3], // 17
             [3,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,3,3,3,3,3,3,3,3,0,0,0,3], // 18
-            [3,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,3], // 19
+            [3,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,3,0,0,0,0,0,0,0,3,3,3,3], // 19
             [3,3,3,3,3,3,3,0,0,0,3,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,0,0,3,0,0,3], // 20
             [3,3,3,3,3,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,3], // 21
-            [3,0,0,0,3,0,0,0,0,0,0,0,0,0,3,3,3,8,3,3,3,0,0,3,0,0,0,3,0,0,0,3], // 22  BLUE LOCKED DOOR at (17,22)
+            [3,0,0,0,3,3,3,3,3,3,3,3,3,3,3,3,3,8,3,3,3,0,0,3,10,10,10,3,0,0,0,3], // 22  BLUE LOCKED DOOR at (17,22)
             [3,0,0,0,4,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,3], // 23
-            [3,0,0,0,3,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,3], // 24
-            [3,0,0,0,3,3,3,3,3,3,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,3], // 25
+            [3,0,0,0,3,0,0,0,0,0,0,0,3,0,10,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,3], // 24
+            [3,0,0,0,3,3,3,3,3,3,0,0,0,10,10,10,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,3], // 25
             [3,0,0,0,0,0,0,0,0,3,0,0,0,0,3,0,0,3,0,0,3,3,3,3,3,3,3,0,0,0,0,3], // 26
             [3,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3], // 27
             [3,0,0,0,3,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,3], // 28
             [3,0,0,0,0,0,0,0,0,3,3,3,0,0,0,3,0,0,3,0,0,0,3,0,0,0,0,0,0,0,6,3], // 29  EXIT at (30,29)
-            [3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3], // 30
+            [3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10,3], // 30
             [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3], // 31
         ]
         return LevelData(
@@ -477,12 +527,12 @@ struct GameWorld {
                 (.demon, 21.5, 11.5),
                 (.soldier, 23.5, 13.5),
                 // Central gallery
-                (.imp, 10.5, 17.5),
+                (.imp, 10.5, 18.5),
                 (.soldier, 15.5, 16.5),
                 // Lower passages
-                (.demon, 7.5, 22.5),
+                (.demon, 6.5, 23.5),
                 (.imp, 12.5, 23.5),
-                (.soldier, 16.5, 22.5),
+                (.soldier, 16.5, 23.5),
                 // South barracks
                 (.demon, 3.5, 27.5),
                 (.soldier, 7.5, 29.5),
@@ -513,8 +563,8 @@ struct GameWorld {
                 (.healthPack(amount: 25), 12.5, 16.5),
                 (.ammoShells(amount: 12), 4.5, 19.5),
                 // Lower passages
-                (.healthPack(amount: 50), 15.5, 22.5),
-                (.ammoBullets(amount: 30), 9.5, 26.5),
+                (.healthPack(amount: 50), 15.5, 24.5),
+                (.ammoBullets(amount: 30), 10.5, 26.5),
                 // South barracks
                 (.healthPack(amount: 25), 2.5, 26.5),
                 (.ammoShells(amount: 10), 6.5, 28.5),
@@ -522,7 +572,8 @@ struct GameWorld {
                 (.armorVest(amount: 50), 24.5, 24.5),
                 (.healthPack(amount: 50), 28.5, 27.5),
                 (.ammoShells(amount: 12), 30.5, 30.5),
-            ]
+            ],
+            objective: .exterminate(.demon)
         )
     }
 }

@@ -12,6 +12,7 @@ enum GameStateType {
     case paused
     case dead
     case levelComplete
+    case campaignComplete
 }
 
 enum ProjectileType {
@@ -31,6 +32,15 @@ struct Projectile {
     var type: ProjectileType = .fireball
 }
 
+/// Score card for one finished level, kept for the end-of-campaign summary
+struct LevelResult {
+    let level: Int
+    let title: String
+    let kills: Int
+    let totalEnemies: Int
+    let time: Double
+}
+
 final class GameEngine {
     var state: GameStateType = .menu
     var world: GameWorld
@@ -38,11 +48,17 @@ final class GameEngine {
     var enemies: [Enemy]
     var items: [Item]
     var projectiles: [Projectile] = []
+    /// Static data of the loaded level: layout, spawns and mission objective
+    private(set) var levelData: GameWorld.LevelData
+    /// Tile-distance field from the player, rebuilt every frame for enemy pathfinding
+    private var navField: NavigationField
 
     var killCount: Int = 0
     var totalEnemies: Int = 0
     var elapsedTime: Double = 0
     var currentLevel: Int = 1
+    /// Results of every level finished in the current campaign run
+    private(set) var levelResults: [LevelResult] = []
 
     var damageFlashTimer: Double = 0
     var pickupFlashTimer: Double = 0
@@ -54,6 +70,8 @@ final class GameEngine {
     var muzzleFlashTimer: Double = 0
     var deathAnimTimer: Double = 0
     private var deathAnimStarted: Bool = false
+    /// Accumulates time spent standing in nukage; damage lands every damageFloorInterval
+    private var damageFloorTimer: Double = 0
     var statusMessage: String = ""
     var statusMessageTimer: Double = 0
     var levelNameTimer: Double = 3.0
@@ -68,7 +86,10 @@ final class GameEngine {
 
     init() {
         let data = GameWorld.levelData(for: 1)
-        world = GameWorld.createLevel(1)
+        let newWorld = GameWorld.createLevel(1)
+        levelData = data
+        world = newWorld
+        navField = NavigationField(width: newWorld.width, height: newWorld.height)
         player = Player(x: data.playerStartX, y: data.playerStartY, angle: data.playerStartAngle)
         enemies = []
         items = []
@@ -78,16 +99,26 @@ final class GameEngine {
         spawnInvincibilityTimer = 1.5
     }
 
-    func restart() {
-        loadLevel(1)
+    /// Whether the loaded level is the last one of the campaign
+    var isFinalLevel: Bool { currentLevel >= GameWorld.maxLevel }
+
+    /// Reload the current level after death (pistol start, like DOOM)
+    func restartLevel() {
+        loadLevel(currentLevel)
         state = .playing
     }
 
+    /// Reset everything back to level 1 and hand control to the title screen
+    func resetToMenu() {
+        currentLevel = 1
+        levelResults = []
+        loadLevel(1)
+        state = .menu
+    }
+
     func nextLevel() {
+        guard !isFinalLevel else { return }
         currentLevel += 1
-        if currentLevel > GameWorld.maxLevel {
-            currentLevel = 1  // Loop back
-        }
         // Keep player weapons and ammo
         let savedWeapons = player.weapons
         let savedAmmo = player.ammo
@@ -107,7 +138,9 @@ final class GameEngine {
 
     private func loadLevel(_ level: Int) {
         let data = GameWorld.levelData(for: level)
+        levelData = data
         world = GameWorld.createLevel(level)
+        navField = NavigationField(width: world.width, height: world.height)
         player = Player(x: data.playerStartX, y: data.playerStartY, angle: data.playerStartAngle)
         enemies = []
         items = []
@@ -122,6 +155,7 @@ final class GameEngine {
         muzzleFlashTimer = 0
         deathAnimTimer = 0
         deathAnimStarted = false
+        damageFloorTimer = 0
         statusMessage = ""
         statusMessageTimer = 0
         levelNameTimer = 3.0
@@ -132,14 +166,13 @@ final class GameEngine {
     }
 
     private func spawnEntities() {
-        let data = GameWorld.levelData(for: currentLevel)
         let healthMult = GameConstants.difficultyHealthMultiplier(for: currentLevel)
-        enemies = data.enemies.map {
+        enemies = levelData.enemies.map {
             var e = Enemy(type: $0.0, x: $0.1, y: $0.2)
             e.health = Int(Double(e.health) * healthMult)
             return e
         }
-        items = data.items.map { Item(type: $0.0, x: $0.1, y: $0.2) }
+        items = levelData.items.map { Item(type: $0.0, x: $0.1, y: $0.2) }
     }
 
     func update(deltaTime: Double, input: InputManager.InputState) {
@@ -183,6 +216,9 @@ final class GameEngine {
         // Update weapon animation
         player.weaponState.update(deltaTime: deltaTime)
 
+        // Distance field from the player's tile, so enemies can hunt without line of sight
+        navField.rebuild(world: world, goalX: Int(player.x), goalY: Int(player.y))
+
         // Update enemies
         let invincible = spawnInvincibilityTimer > 0
         for i in enemies.indices {
@@ -195,11 +231,17 @@ final class GameEngine {
                 if case .idle = enemies[i].state { wasIdle = true }
                 else if case .patrolling = enemies[i].state { wasIdle = true }
                 else { wasIdle = false }
-                
-                enemies[i].update(deltaTime: deltaTime, playerX: player.x, playerY: player.y, world: world)
-                
+
+                enemies[i].update(deltaTime: deltaTime, playerX: player.x, playerY: player.y, world: world, nav: navField)
+
                 if wasIdle, case .chasing = enemies[i].state {
                     enemyAlertedThisFrame = true
+                }
+
+                // Enemies can open unlocked doors that block their way
+                if let request = enemies[i].doorRequest {
+                    enemies[i].doorRequest = nil
+                    openDoorForEnemy(x: request.x, y: request.y)
                 }
             }
 
@@ -263,15 +305,8 @@ final class GameEngine {
         }
         checkItemPickups()
 
-        // Damage floor check
-        let playerTile = world.tileAt(x: Int(player.x), y: Int(player.y))
-        if playerTile == .damageFloor {
-            let dmg = Int(5.0 * deltaTime)
-            if dmg > 0 {
-                player.takeDamage(dmg)
-                damageFlashTimer = max(damageFlashTimer, 0.1)
-            }
-        }
+        // Damage floor: periodic ticks while standing in nukage
+        updateDamageFloor(deltaTime: deltaTime)
 
         // Explore tiles around player
         updateExploredTiles()
@@ -314,6 +349,24 @@ final class GameEngine {
         // Victory is triggered by reaching the exit portal (see tryInteract)
     }
 
+    // MARK: - Hazards
+
+    private func updateDamageFloor(deltaTime: Double) {
+        let playerTile = world.tileAt(x: Int(player.x), y: Int(player.y))
+        guard playerTile == .damageFloor, spawnInvincibilityTimer <= 0, !player.isDead else {
+            damageFloorTimer = 0
+            return
+        }
+        damageFloorTimer += deltaTime
+        if damageFloorTimer >= GameConstants.damageFloorInterval {
+            damageFloorTimer -= GameConstants.damageFloorInterval
+            player.takeDamage(GameConstants.damageFloorDamage)
+            damageFlashTimer = max(damageFlashTimer, 0.2)
+            // Flash from the bottom edge: the hurt comes from underfoot
+            lastDamageDirection = player.angle + .pi
+        }
+    }
+
     // MARK: - Weapon Firing
 
     private func firePlayerWeapon() {
@@ -347,7 +400,7 @@ final class GameEngine {
             let rayDirY = sin(rayAngle)
 
             if let (enemyIdx, _) = castAttackRay(fromX: player.x, fromY: player.y, dirX: rayDirX, dirY: rayDirY, range: def.range) {
-                let wasAlive = !enemies[enemyIdx].isDead && !enemies[enemyIdx].isDying && enemies[enemyIdx].health > 0
+                let wasAlive = enemies[enemyIdx].isAlive
                 enemies[enemyIdx].takeDamage(def.damage * damageMult)
                 hitMarkerTimer = 0.15
                 if wasAlive && enemies[enemyIdx].health <= 0 {
@@ -375,7 +428,7 @@ final class GameEngine {
         var closestDist = range
 
         for i in enemies.indices {
-            if enemies[i].isDead || enemies[i].isDying { continue }
+            if !enemies[i].isAlive { continue }
 
             let ex = enemies[i].x - fromX
             let ey = enemies[i].y - fromY
@@ -410,7 +463,7 @@ final class GameEngine {
         let dy = toY - fromY
         let dist = sqrt(dx * dx + dy * dy)
         let steps = Int(dist * 4)
-        guard steps > 0 else { return true }
+        guard steps > 1 else { return true }
 
         for i in 1..<steps {
             let t = Double(i) / Double(steps)
@@ -425,7 +478,7 @@ final class GameEngine {
 
     private func alertNearbyEnemies(x: Double, y: Double, radius: Double) {
         for i in enemies.indices {
-            if enemies[i].isDead || enemies[i].isDying { continue }
+            if !enemies[i].isAlive { continue }
             if case .chasing = enemies[i].state { continue }
             if case .attacking = enemies[i].state { continue }
 
@@ -433,6 +486,7 @@ final class GameEngine {
             let dy = enemies[i].y - y
             let dist = sqrt(dx * dx + dy * dy)
             if dist < radius {
+                enemies[i].patrolTarget = nil
                 enemies[i].state = .chasing
                 enemyAlertedThisFrame = true
             }
@@ -446,7 +500,8 @@ final class GameEngine {
         let radius = GameConstants.playerRadius
 
         for enemy in enemies {
-            if enemy.isDead { continue }
+            // Corpses (dying or dead) are not solid
+            if !enemy.isAlive { continue }
             let dx = player.x - enemy.x
             let dy = player.y - enemy.y
             let dist = sqrt(dx * dx + dy * dy)
@@ -475,9 +530,9 @@ final class GameEngine {
         let minDist = 0.8
         let enemyRadius = 0.25
         for i in 0..<enemies.count {
-            if enemies[i].isDead { continue }
+            if !enemies[i].isAlive { continue }
             for j in (i + 1)..<enemies.count {
-                if enemies[j].isDead { continue }
+                if !enemies[j].isAlive { continue }
                 let dx = enemies[i].x - enemies[j].x
                 let dy = enemies[i].y - enemies[j].y
                 let dist = sqrt(dx * dx + dy * dy)
@@ -519,19 +574,19 @@ final class GameEngine {
         let stepSize = 0.5
         var dist = stepSize
         var checkedTiles = Set<Int>()
-        
+
         while dist <= maxDist {
             let checkX = player.x + player.dirX * dist
             let checkY = player.y + player.dirY * dist
             let tileX = Int(checkX)
             let tileY = Int(checkY)
             let tileKey = tileY * world.width + tileX
-            
+
             if !checkedTiles.contains(tileKey) {
                 checkedTiles.insert(tileKey)
-                
+
                 let tile = world.tileAt(x: tileX, y: tileY)
-                
+
                 if tile.isDoor {
                     // Check if locked door requires a key
                     if tile == .lockedDoorRed && !player.keys.contains(.red) {
@@ -559,34 +614,46 @@ final class GameEngine {
                     }
                     return
                 }
-                
+
                 if tile == .exitPortal {
                     if !missionObjectiveComplete {
-                        switch currentLevel {
-                        case 1:
-                            statusMessage = "RETRIEVE THE INTEL DATA FIRST"
-                        case 2:
-                            statusMessage = "FIND THE DEMONIC ARTIFACT FIRST"
-                        case 3:
-                            let remaining = enemies.filter { $0.type == .demon && !$0.isDead }.count
-                            statusMessage = "DEMONS REMAIN: \(remaining)"
-                        default:
-                            statusMessage = "OBJECTIVE INCOMPLETE"
-                        }
+                        statusMessage = objectiveIncompleteMessage
                         statusMessageTimer = 2.0
                         return
                     }
-                    state = .levelComplete
+                    completeLevel()
                     return
                 }
-                
-                // Stop if we hit a solid wall
-                if tile != .empty {
+
+                // Stop if we hit a solid wall (hazard floors don't block the interaction ray)
+                if tile.isWall {
                     return
                 }
             }
-            
+
             dist += stepSize
+        }
+    }
+
+    private func completeLevel() {
+        let title = GameWorld.briefingText(for: currentLevel).title
+        levelResults.append(LevelResult(
+            level: currentLevel,
+            title: title,
+            kills: killCount,
+            totalEnemies: totalEnemies,
+            time: elapsedTime
+        ))
+        state = .levelComplete
+    }
+
+    /// Enemies open unlocked doors that block their path (locked doors stay shut for them)
+    private func openDoorForEnemy(x: Int, y: Int) {
+        guard world.tileAt(x: x, y: y) == .door, let doorIdx = world.doorAt(x: x, y: y) else { return }
+        if !world.doors[doorIdx].isFullyOpen && !world.doors[doorIdx].isOpening {
+            world.doors[doorIdx].isOpening = true
+            world.doors[doorIdx].isClosing = false
+            doorOpenedThisFrame = true
         }
     }
 
@@ -704,36 +771,60 @@ final class GameEngine {
 
     // MARK: - Mission Objectives
 
+    /// The loaded level's objective (defined in its LevelData)
+    var objective: MissionObjective { levelData.objective }
+
+    /// Living enemies the current kill objective still requires (0 for item objectives)
+    var remainingObjectiveTargets: Int {
+        switch levelData.objective {
+        case .exterminate(let type):
+            return enemies.filter { $0.type == type && $0.isAlive }.count
+        case .exterminateAll:
+            return enemies.filter { $0.isAlive }.count
+        default:
+            return 0
+        }
+    }
+
     /// Whether the current level's mission objective is complete
     var missionObjectiveComplete: Bool {
-        switch currentLevel {
-        case 1:
-            // Level 1: Collect Intel Data
-            return items.contains { if case .intelData = $0.type { return $0.isCollected } else { return false } }
-        case 2:
-            // Level 2: Retrieve Demonic Artifact
-            return items.contains { if case .demonicArtifact = $0.type { return $0.isCollected } else { return false } }
-        case 3:
-            // Level 3: Exterminate all Demons
-            return enemies.filter { $0.type == .demon }.allSatisfy { $0.isDead }
-        default:
+        switch levelData.objective {
+        case .retrieveIntel:
+            return items.contains { item in
+                if case .intelData = item.type { return item.isCollected }
+                return false
+            }
+        case .retrieveArtifact:
+            return items.contains { item in
+                if case .demonicArtifact = item.type { return item.isCollected }
+                return false
+            }
+        case .exterminate, .exterminateAll:
+            return remainingObjectiveTargets == 0
+        case .reachExit:
             return true
         }
     }
 
     /// Description of the current objective for HUD display
     var objectiveText: String {
-        switch currentLevel {
-        case 1: return "RETRIEVE INTEL DATA"
-        case 2: return "FIND DEMONIC ARTIFACT"
-        case 3:
-            let remaining = enemies.filter { $0.type == .demon && !$0.isDead }.count
+        let obj = levelData.objective
+        if obj.isKillObjective {
+            let remaining = remainingObjectiveTargets
             if remaining > 0 {
-                return "EXTERMINATE DEMONS: \(remaining) LEFT"
+                return "\(obj.title): \(remaining) LEFT"
             }
-            return "EXTERMINATE DEMONS"
-        default: return ""
         }
+        return obj.title
+    }
+
+    /// Status message when the player reaches the exit before finishing the objective
+    private var objectiveIncompleteMessage: String {
+        let obj = levelData.objective
+        if obj.isKillObjective {
+            return "\(obj.incompleteMessage): \(remainingObjectiveTargets)"
+        }
+        return obj.incompleteMessage
     }
 
     // MARK: - Fog of War
@@ -788,18 +879,8 @@ final class GameEngine {
                     world.doors[i].isClosing = true
                 }
             } else if world.doors[i].isClosing {
-                // Check if player's bounding box overlaps the door tile
-                let doorX = world.doors[i].tileX
-                let doorY = world.doors[i].tileY
-                let r = GameConstants.playerRadius
-                let playerMinX = Int(player.x - r)
-                let playerMaxX = Int(player.x + r)
-                let playerMinY = Int(player.y - r)
-                let playerMaxY = Int(player.y + r)
-                let playerInDoor = (playerMinX <= doorX && playerMaxX >= doorX &&
-                                    playerMinY <= doorY && playerMaxY >= doorY)
-                if playerInDoor {
-                    // Don't close on player
+                if isDoorwayOccupied(tileX: world.doors[i].tileX, tileY: world.doors[i].tileY) {
+                    // Don't close on the player or an enemy standing in the doorway
                     world.doors[i].stayOpenTimer = 1.0
                     world.doors[i].isClosing = false
                     continue
@@ -812,5 +893,26 @@ final class GameEngine {
                 }
             }
         }
+    }
+
+    /// Whether the player's or a living enemy's bounding box overlaps the door tile
+    private func isDoorwayOccupied(tileX: Int, tileY: Int) -> Bool {
+        if overlapsTile(x: player.x, y: player.y, radius: GameConstants.playerRadius, tileX: tileX, tileY: tileY) {
+            return true
+        }
+        for enemy in enemies where enemy.isAlive {
+            if overlapsTile(x: enemy.x, y: enemy.y, radius: 0.25, tileX: tileX, tileY: tileY) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func overlapsTile(x: Double, y: Double, radius: Double, tileX: Int, tileY: Int) -> Bool {
+        let minX = Int(x - radius)
+        let maxX = Int(x + radius)
+        let minY = Int(y - radius)
+        let maxY = Int(y + radius)
+        return minX <= tileX && maxX >= tileX && minY <= tileY && maxY >= tileY
     }
 }
