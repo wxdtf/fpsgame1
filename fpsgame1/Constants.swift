@@ -60,6 +60,7 @@ enum GameConstants {
         case 1: return 1.0
         case 2: return 1.2
         case 3: return 1.5
+        case 4: return 1.6
         default: return 1.0 + Double(level - 1) * 0.25
         }
     }
@@ -68,6 +69,7 @@ enum GameConstants {
         case 1: return 1.0
         case 2: return 1.15
         case 3: return 1.35
+        case 4: return 1.45
         default: return 1.0 + Double(level - 1) * 0.2
         }
     }
@@ -76,6 +78,7 @@ enum GameConstants {
         case 1: return 1.0
         case 2: return 1.05
         case 3: return 1.15
+        case 4: return 1.2
         default: return 1.0 + Double(level - 1) * 0.05
         }
     }
