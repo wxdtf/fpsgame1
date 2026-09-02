@@ -257,6 +257,7 @@ struct GameWorld {
                     "every demon left on the moon is converging.",
                     "Take the RED KEY from the generator room,",
                     "then the BLUE and YELLOW KEYS from the core.",
+                    "A BARON OF HELL guards the anomaly itself.",
                     "Nothing leaves this place alive.",
                     "",
                     "Objective: Exterminate all hostiles."
@@ -673,10 +674,10 @@ struct GameWorld {
                 (.imp, 18.5, 9.5),
                 (.imp, 25.5, 9.5),
                 (.soldier, 29.5, 6.5),
-                // Final arena
+                // Final arena — the Baron of Hell waits just inside the yellow door
                 (.demon, 23.5, 13.5),
                 (.demon, 29.5, 13.5),
-                (.soldier, 26.5, 13.5),
+                (.baron, 26.5, 14.5),
                 (.demon, 23.5, 19.5),
                 (.imp, 26.5, 19.5),
                 (.imp, 29.5, 19.5),

@@ -18,6 +18,7 @@ final class SpriteAssets {
     let impSprites: SpriteSheet
     let demonSprites: SpriteSheet
     let soldierSprites: SpriteSheet
+    let baronSprites: SpriteSheet
 
     let pistolSprites: SpriteSheet
     let shotgunSprites: SpriteSheet
@@ -31,6 +32,7 @@ final class SpriteAssets {
         impSprites = Self.generateImpSprites()
         demonSprites = Self.generateDemonSprites()
         soldierSprites = Self.generateSoldierSprites()
+        baronSprites = Self.generateBaronSprites()
         pistolSprites = Self.generatePistolSprites()
         shotgunSprites = Self.generateShotgunSprites()
         fistSprites = Self.generateFistSprites()
@@ -44,6 +46,7 @@ final class SpriteAssets {
         case .imp: return impSprites
         case .demon: return demonSprites
         case .soldier: return soldierSprites
+        case .baron: return baronSprites
         }
     }
 
@@ -813,6 +816,209 @@ final class SpriteAssets {
                     fillCircle(&px, w: w, h: h, cx: 28, cy: 49, r: 4, color: blood)
                     fillCircle(&px, w: w, h: h, cx: 32, cy: 52, r: 3, color: bloodDark)
                     addNoise(&px, w: w, h: h, intensity: 10, seed: frame)
+                    addOutline(&px, w: w, h: h, color: outline)
+                }
+            }
+            frames.append(px)
+        }
+        return SpriteSheet(frames: frames, width: w, height: h)
+    }
+
+
+    // MARK: - Baron Sprites (towering horned boss: claws and green plasma)
+
+    private static func generateBaronSprites() -> SpriteSheet {
+        let w = 64, h = 80
+        var frames: [[UInt32]] = []
+
+        // Palette: pinkish-tan torso, dark furred goat legs, bone horns, green hellfire
+        let skin = c(190, 140, 120)
+        let skinDark = c(140, 95, 80)
+        let skinDeep = c(95, 60, 50)
+        let skinLight = c(215, 170, 150)
+        let skinHi = c(235, 195, 175)
+        let fur = c(90, 55, 35)
+        let furDark = c(60, 35, 20)
+        let furLight = c(115, 75, 50)
+        let horn = c(225, 215, 190)
+        let hornDark = c(160, 150, 130)
+        let eye = c(70, 255, 100)
+        let eyeCore = c(220, 255, 230)
+        let plasma = c(60, 240, 110)
+        let plasmaCore = c(220, 255, 230)
+        let plasmaDark = c(20, 140, 60)
+        let tooth = c(240, 235, 220)
+        let gum = c(90, 20, 30)
+        let hoof = c(40, 25, 15)
+        let claw = c(230, 225, 205)
+        let blood = c(50, 170, 40)      // Barons bleed green
+        let bloodDark = c(25, 100, 20)
+        let outline = c(40, 20, 20)
+
+        for frame in 0..<10 {
+            var px = [UInt32](repeating: T, count: w * h)
+            let walking = frame >= 1 && frame <= 3
+            let yOff = walking ? (frame % 2 == 0 ? -2 : 2) : 0
+            let legOff = walking ? (frame % 2) * 4 : 0
+
+            if frame <= 6 {
+                // --- Goat legs (drawn first, the torso overlaps the hips) ---
+                fillOval(&px, w: w, h: h, cx: 24 + legOff, cy: 54 + yOff, rx: 7, ry: 9, color: fur)
+                fillOval(&px, w: w, h: h, cx: 40 - legOff, cy: 54 + yOff, rx: 7, ry: 9, color: fur)
+                fillOval(&px, w: w, h: h, cx: 22 + legOff, cy: 52 + yOff, rx: 3, ry: 5, color: furLight)
+                fillOval(&px, w: w, h: h, cx: 42 - legOff, cy: 52 + yOff, rx: 3, ry: 5, color: furLight)
+                // Shins bent back like a goat's
+                fillOval(&px, w: w, h: h, cx: 21 + legOff, cy: 67 + yOff, rx: 5, ry: 8, color: furDark)
+                fillOval(&px, w: w, h: h, cx: 43 - legOff, cy: 67 + yOff, rx: 5, ry: 8, color: furDark)
+                // Hooves
+                fillOval(&px, w: w, h: h, cx: 21 + legOff, cy: 76 + yOff, rx: 6, ry: 3, color: hoof)
+                fillOval(&px, w: w, h: h, cx: 43 - legOff, cy: 76 + yOff, rx: 6, ry: 3, color: hoof)
+
+                // --- Torso: broad shoulders tapering to the waist ---
+                fillOval(&px, w: w, h: h, cx: 32, cy: 34 + yOff, rx: 19, ry: 13, color: skin)
+                fillOval(&px, w: w, h: h, cx: 32, cy: 46 + yOff, rx: 13, ry: 8, color: skinDark)
+                // Chest plates
+                fillOval(&px, w: w, h: h, cx: 25, cy: 30 + yOff, rx: 7, ry: 5, color: skinLight)
+                fillOval(&px, w: w, h: h, cx: 39, cy: 30 + yOff, rx: 7, ry: 5, color: skinLight)
+                fillOval(&px, w: w, h: h, cx: 24, cy: 29 + yOff, rx: 4, ry: 2, color: skinHi)
+                fillOval(&px, w: w, h: h, cx: 38, cy: 29 + yOff, rx: 4, ry: 2, color: skinHi)
+                // Abs
+                drawLine(&px, w: w, h: h, x0: 32, y0: 36 + yOff, x1: 32, y1: 50 + yOff, color: skinDeep)
+                for ay in stride(from: 38, through: 46, by: 4) {
+                    fillOval(&px, w: w, h: h, cx: 28, cy: ay + yOff, rx: 3, ry: 1, color: skinLight)
+                    fillOval(&px, w: w, h: h, cx: 36, cy: ay + yOff, rx: 3, ry: 1, color: skinLight)
+                }
+
+                // --- Arms ---
+                let attacking = frame == 4 || frame == 5
+                // Left arm (viewer's left) hangs with claws spread
+                fillOval(&px, w: w, h: h, cx: 12, cy: 32 + yOff, rx: 5, ry: 8, color: skin)
+                fillOval(&px, w: w, h: h, cx: 9, cy: 45 + yOff, rx: 4, ry: 8, color: skinDark)
+                for k in 0..<3 {
+                    fillTriangle(&px, w: w, h: h, x0: 6 + k * 3, y0: 52 + yOff, x1: 8 + k * 3, y1: 52 + yOff, x2: 7 + k * 3, y2: 58 + yOff, color: claw)
+                }
+                if attacking {
+                    // Right arm raised, hand cupping a plasma ball
+                    fillOval(&px, w: w, h: h, cx: 50, cy: 28 + yOff, rx: 5, ry: 8, color: skin)
+                    fillOval(&px, w: w, h: h, cx: 54, cy: 16 + yOff, rx: 4, ry: 7, color: skinDark)
+                    let ballR = frame == 4 ? 4 : 7
+                    fillCircle(&px, w: w, h: h, cx: 55, cy: 8 + yOff, r: ballR + 1, color: plasmaDark)
+                    fillCircle(&px, w: w, h: h, cx: 55, cy: 8 + yOff, r: ballR, color: plasma)
+                    fillCircle(&px, w: w, h: h, cx: 54, cy: 7 + yOff, r: max(1, ballR - 3), color: plasmaCore)
+                    if frame == 5 {
+                        // Sparks flying off the charged ball
+                        for (sx, sy) in [(46, 4), (62, 10), (49, 15), (61, 1)] {
+                            fillRect(&px, w: w, h: h, x: sx, y: sy + yOff, rw: 2, rh: 2, color: plasma)
+                        }
+                    }
+                } else {
+                    // Right arm hangs
+                    fillOval(&px, w: w, h: h, cx: 52, cy: 32 + yOff, rx: 5, ry: 8, color: skin)
+                    fillOval(&px, w: w, h: h, cx: 55, cy: 45 + yOff, rx: 4, ry: 8, color: skinDark)
+                    for k in 0..<3 {
+                        fillTriangle(&px, w: w, h: h, x0: 52 + k * 3, y0: 52 + yOff, x1: 54 + k * 3, y1: 52 + yOff, x2: 53 + k * 3, y2: 58 + yOff, color: claw)
+                    }
+                }
+
+                // --- Head with horns ---
+                fillTriangle(&px, w: w, h: h, x0: 24, y0: 12 + yOff, x1: 29, y1: 12 + yOff, x2: 17, y2: 0 + yOff, color: horn)
+                fillTriangle(&px, w: w, h: h, x0: 35, y0: 12 + yOff, x1: 40, y1: 12 + yOff, x2: 47, y2: 0 + yOff, color: horn)
+                drawLine(&px, w: w, h: h, x0: 26, y0: 12 + yOff, x1: 19, y1: 2 + yOff, color: hornDark)
+                drawLine(&px, w: w, h: h, x0: 38, y0: 12 + yOff, x1: 45, y1: 2 + yOff, color: hornDark)
+                // Skull, heavy brow, muzzle
+                fillOval(&px, w: w, h: h, cx: 32, cy: 16 + yOff, rx: 9, ry: 8, color: skin)
+                fillOval(&px, w: w, h: h, cx: 32, cy: 11 + yOff, rx: 8, ry: 3, color: skinDark)
+                fillOval(&px, w: w, h: h, cx: 32, cy: 20 + yOff, rx: 6, ry: 4, color: skinDark)
+                // Burning green eyes
+                fillCircle(&px, w: w, h: h, cx: 28, cy: 14 + yOff, r: 2, color: eye)
+                fillCircle(&px, w: w, h: h, cx: 36, cy: 14 + yOff, r: 2, color: eye)
+                fillRect(&px, w: w, h: h, x: 28, y: 13 + yOff, rw: 1, rh: 1, color: eyeCore)
+                fillRect(&px, w: w, h: h, x: 36, y: 13 + yOff, rw: 1, rh: 1, color: eyeCore)
+                // Mouth
+                if attacking {
+                    // Roaring: jaw open
+                    fillOval(&px, w: w, h: h, cx: 32, cy: 22 + yOff, rx: 5, ry: 3, color: gum)
+                    for tx in stride(from: 28, through: 34, by: 3) {
+                        fillTriangle(&px, w: w, h: h, x0: tx, y0: 20 + yOff, x1: tx + 2, y1: 20 + yOff, x2: tx + 1, y2: 23 + yOff, color: tooth)
+                    }
+                } else {
+                    fillRect(&px, w: w, h: h, x: 27, y: 21 + yOff, rw: 10, rh: 1, color: gum)
+                    fillTriangle(&px, w: w, h: h, x0: 27, y0: 21 + yOff, x1: 29, y1: 21 + yOff, x2: 28, y2: 24 + yOff, color: tooth)
+                    fillTriangle(&px, w: w, h: h, x0: 35, y0: 21 + yOff, x1: 37, y1: 21 + yOff, x2: 36, y2: 24 + yOff, color: tooth)
+                }
+
+                if frame == 6 {
+                    for i in 0..<px.count where px[i] != T { px[i] = brighten(px[i], 90) }
+                }
+
+                addNoise(&px, w: w, h: h, intensity: 10, seed: frame + 40)
+                addOutline(&px, w: w, h: h, color: outline)
+            } else {
+                let progress = frame - 7
+                if progress == 0 {
+                    // Recoil: head thrown back, arms flung out, green blood from the chest
+                    fillOval(&px, w: w, h: h, cx: 24, cy: 56, rx: 7, ry: 9, color: fur)
+                    fillOval(&px, w: w, h: h, cx: 40, cy: 56, rx: 7, ry: 9, color: fur)
+                    fillOval(&px, w: w, h: h, cx: 20, cy: 69, rx: 5, ry: 8, color: furDark)
+                    fillOval(&px, w: w, h: h, cx: 44, cy: 69, rx: 5, ry: 8, color: furDark)
+                    fillOval(&px, w: w, h: h, cx: 20, cy: 77, rx: 6, ry: 2, color: hoof)
+                    fillOval(&px, w: w, h: h, cx: 44, cy: 77, rx: 6, ry: 2, color: hoof)
+                    fillOval(&px, w: w, h: h, cx: 34, cy: 38, rx: 19, ry: 13, color: skin)
+                    fillOval(&px, w: w, h: h, cx: 34, cy: 49, rx: 13, ry: 7, color: skinDark)
+                    fillOval(&px, w: w, h: h, cx: 10, cy: 30, rx: 8, ry: 4, color: skin)
+                    fillOval(&px, w: w, h: h, cx: 58, cy: 30, rx: 8, ry: 4, color: skin)
+                    fillTriangle(&px, w: w, h: h, x0: 28, y0: 14, x1: 33, y1: 14, x2: 20, y2: 3, color: horn)
+                    fillTriangle(&px, w: w, h: h, x0: 39, y0: 14, x1: 44, y1: 14, x2: 51, y2: 3, color: horn)
+                    fillOval(&px, w: w, h: h, cx: 36, cy: 18, rx: 9, ry: 7, color: skin)
+                    fillCircle(&px, w: w, h: h, cx: 32, cy: 17, r: 2, color: eye)
+                    fillCircle(&px, w: w, h: h, cx: 40, cy: 17, r: 2, color: eye)
+                    fillOval(&px, w: w, h: h, cx: 36, cy: 23, rx: 5, ry: 3, color: gum)
+                    fillCircle(&px, w: w, h: h, cx: 30, cy: 34, r: 6, color: blood)
+                    fillCircle(&px, w: w, h: h, cx: 27, cy: 30, r: 3, color: bloodDark)
+                    drawLine(&px, w: w, h: h, x0: 30, y0: 28, x1: 24, y1: 20, color: blood)
+                    drawLine(&px, w: w, h: h, x0: 33, y0: 29, x1: 38, y1: 22, color: blood)
+                    addNoise(&px, w: w, h: h, intensity: 10, seed: frame + 40)
+                    addOutline(&px, w: w, h: h, color: outline)
+                } else if progress == 1 {
+                    // Collapsing: down on one knee, toppling to the right
+                    fillOval(&px, w: w, h: h, cx: 18, cy: 66, rx: 8, ry: 6, color: fur)
+                    fillOval(&px, w: w, h: h, cx: 40, cy: 68, rx: 9, ry: 6, color: furDark)
+                    fillOval(&px, w: w, h: h, cx: 14, cy: 75, rx: 6, ry: 3, color: hoof)
+                    fillOval(&px, w: w, h: h, cx: 46, cy: 75, rx: 6, ry: 3, color: hoof)
+                    fillOval(&px, w: w, h: h, cx: 34, cy: 50, rx: 18, ry: 12, color: skin)
+                    fillOval(&px, w: w, h: h, cx: 34, cy: 58, rx: 12, ry: 6, color: skinDark)
+                    fillOval(&px, w: w, h: h, cx: 14, cy: 56, rx: 4, ry: 9, color: skin)
+                    fillTriangle(&px, w: w, h: h, x0: 46, y0: 36, x1: 51, y1: 38, x2: 44, y2: 24, color: horn)
+                    fillTriangle(&px, w: w, h: h, x0: 55, y0: 40, x1: 59, y1: 44, x2: 63, y2: 30, color: horn)
+                    fillOval(&px, w: w, h: h, cx: 52, cy: 42, rx: 8, ry: 7, color: skin)
+                    fillCircle(&px, w: w, h: h, cx: 50, cy: 41, r: 2, color: eye)
+                    fillCircle(&px, w: w, h: h, cx: 56, cy: 42, r: 1, color: eye)
+                    fillOval(&px, w: w, h: h, cx: 54, cy: 47, rx: 4, ry: 2, color: gum)
+                    fillCircle(&px, w: w, h: h, cx: 30, cy: 48, r: 6, color: blood)
+                    fillCircle(&px, w: w, h: h, cx: 34, cy: 52, r: 3, color: bloodDark)
+                    fillOval(&px, w: w, h: h, cx: 30, cy: 77, rx: 10, ry: 2, color: bloodDark)
+                    addNoise(&px, w: w, h: h, intensity: 10, seed: frame + 40)
+                    addOutline(&px, w: w, h: h, color: outline)
+                } else {
+                    // Corpse: sprawled on its back, horns jutting up on the right
+                    fillOval(&px, w: w, h: h, cx: 32, cy: 76, rx: 28, ry: 3, color: bloodDark)
+                    fillOval(&px, w: w, h: h, cx: 12, cy: 68, rx: 9, ry: 5, color: fur)
+                    fillOval(&px, w: w, h: h, cx: 6, cy: 72, rx: 5, ry: 3, color: hoof)
+                    fillOval(&px, w: w, h: h, cx: 30, cy: 66, rx: 17, ry: 8, color: skin)
+                    fillOval(&px, w: w, h: h, cx: 30, cy: 70, rx: 12, ry: 4, color: skinDark)
+                    fillOval(&px, w: w, h: h, cx: 24, cy: 62, rx: 5, ry: 2, color: skinLight)
+                    fillOval(&px, w: w, h: h, cx: 36, cy: 62, rx: 5, ry: 2, color: skinLight)
+                    fillOval(&px, w: w, h: h, cx: 44, cy: 72, rx: 8, ry: 3, color: skinDark)
+                    fillTriangle(&px, w: w, h: h, x0: 50, y0: 60, x1: 54, y1: 62, x2: 47, y2: 48, color: horn)
+                    fillTriangle(&px, w: w, h: h, x0: 56, y0: 60, x1: 60, y1: 62, x2: 62, y2: 48, color: horn)
+                    fillOval(&px, w: w, h: h, cx: 54, cy: 66, rx: 7, ry: 6, color: skin)
+                    drawLine(&px, w: w, h: h, x0: 50, y0: 65, x1: 53, y1: 65, color: skinDeep)
+                    drawLine(&px, w: w, h: h, x0: 56, y0: 65, x1: 59, y1: 65, color: skinDeep)
+                    fillOval(&px, w: w, h: h, cx: 54, cy: 70, rx: 4, ry: 2, color: gum)
+                    fillTriangle(&px, w: w, h: h, x0: 52, y0: 70, x1: 54, y1: 70, x2: 53, y2: 73, color: tooth)
+                    fillCircle(&px, w: w, h: h, cx: 28, cy: 65, r: 5, color: blood)
+                    fillCircle(&px, w: w, h: h, cx: 34, cy: 68, r: 3, color: bloodDark)
+                    addNoise(&px, w: w, h: h, intensity: 10, seed: frame + 40)
                     addOutline(&px, w: w, h: h, color: outline)
                 }
             }
@@ -1679,6 +1885,14 @@ final class SpriteAssets {
         fillCircle(&bl, w: w, h: h, cx: 8, cy: 8, r: 2, color: c(255, 240, 160))
         fillCircle(&bl, w: w, h: h, cx: 8, cy: 8, r: 1, color: c(255, 255, 240))
         frames.append(bl)
+
+        // Frame 2: Plasma ball (baron) — green hellfire with a white-hot core
+        var pl = [UInt32](repeating: T, count: w * h)
+        fillCircle(&pl, w: w, h: h, cx: 8, cy: 8, r: 7, color: c(20, 120, 50))
+        fillCircle(&pl, w: w, h: h, cx: 8, cy: 8, r: 6, color: c(50, 200, 90))
+        fillCircle(&pl, w: w, h: h, cx: 8, cy: 8, r: 4, color: c(120, 255, 150))
+        fillCircle(&pl, w: w, h: h, cx: 8, cy: 8, r: 2, color: c(220, 255, 230))
+        frames.append(pl)
 
         return SpriteSheet(frames: frames, width: w, height: h)
     }

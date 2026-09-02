@@ -42,6 +42,9 @@ final class GameViewModel {
     var objectiveComplete: Bool = false
     var isFinalLevel: Bool = false
     var levelResults: [LevelResult] = []
+    var bossActive: Bool = false
+    var bossName: String = ""
+    var bossHealthFraction: Double = 1.0
 
     let inputManager = InputManager()
 
@@ -298,6 +301,11 @@ final class GameViewModel {
             // Enemy alerted
             if engine.enemyAlertedThisFrame {
                 audio.playEnemyAlert()
+            }
+
+            // Boss noticed the player
+            if engine.bossAlertedThisFrame {
+                audio.playBossRoar()
             }
 
             // Enemy hurt (but not killed)
@@ -557,6 +565,15 @@ final class GameViewModel {
         // Mission objective
         objectiveText = engine.objectiveText
         objectiveComplete = engine.missionObjectiveComplete
+
+        // Boss health bar
+        if let boss = engine.activeBoss {
+            bossActive = true
+            bossName = boss.name
+            bossHealthFraction = Double(boss.health) / Double(max(1, boss.maxHealth))
+        } else {
+            bossActive = false
+        }
 
         // Campaign progress
         isFinalLevel = engine.isFinalLevel

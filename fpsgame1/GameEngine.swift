@@ -18,6 +18,23 @@ enum GameStateType {
 enum ProjectileType {
     case fireball  // Imp — slow, glowing orange
     case bullet    // Soldier — fast, bright tracer
+    case plasma    // Baron — green hellfire
+
+    /// Frame in the projectile sprite sheet
+    var spriteFrame: Int {
+        switch self {
+        case .fireball: return 0
+        case .bullet: return 1
+        case .plasma: return 2
+        }
+    }
+}
+
+/// Name and health of the boss the player is fighting, for the HUD bar
+struct BossStatus {
+    let name: String
+    let health: Int
+    let maxHealth: Int
 }
 
 struct Projectile {
@@ -81,6 +98,8 @@ final class GameEngine {
     /// Audio event flags — reset each frame, checked by GameViewModel for sound triggers
     var doorOpenedThisFrame: Bool = false
     var enemyAlertedThisFrame: Bool = false
+    /// A boss noticed the player this frame (plays the roar)
+    var bossAlertedThisFrame: Bool = false
     var enemyHurtThisFrame: Bool = false
     var enemyAttackedThisFrame: EnemyType? = nil
 
@@ -170,6 +189,7 @@ final class GameEngine {
         enemies = levelData.enemies.map {
             var e = Enemy(type: $0.0, x: $0.1, y: $0.2)
             e.health = Int(Double(e.health) * healthMult)
+            e.maxHealth = e.health
             return e
         }
         items = levelData.items.map { Item(type: $0.0, x: $0.1, y: $0.2) }
@@ -181,6 +201,7 @@ final class GameEngine {
         firedWeaponThisFrame = nil
         doorOpenedThisFrame = false
         enemyAlertedThisFrame = false
+        bossAlertedThisFrame = false
         enemyHurtThisFrame = false
         enemyAttackedThisFrame = nil
         spawnInvincibilityTimer = max(0, spawnInvincibilityTimer - deltaTime)
@@ -236,6 +257,7 @@ final class GameEngine {
 
                 if wasIdle, case .chasing = enemies[i].state {
                     enemyAlertedThisFrame = true
+                    if enemies[i].type.isBoss { bossAlertedThisFrame = true }
                 }
 
                 // Enemies can open unlocked doors that block their way
@@ -247,10 +269,11 @@ final class GameEngine {
 
             // Check if enemy is attacking and should deal damage
             if case .attacking = enemies[i].state {
-                // Deal damage once per attack, at the midpoint of the animation
-                if !enemies[i].hasDealtDamageThisAttack && enemies[i].animationTimer >= 0.15 {
+                // Deal damage once per attack, partway through the animation
+                let type = enemies[i].type
+                if !enemies[i].hasDealtDamageThisAttack && enemies[i].animationTimer >= type.attackHitTime {
                     enemies[i].hasDealtDamageThisAttack = true
-                    enemyAttackedThisFrame = enemies[i].type
+                    enemyAttackedThisFrame = type
 
                     let dx = enemies[i].x - player.x
                     let dy = enemies[i].y - player.y
@@ -258,9 +281,20 @@ final class GameEngine {
 
                     let dmgMult = GameConstants.difficultyDamageMultiplier(for: currentLevel)
                     let spdMult = GameConstants.difficultySpeedMultiplier(for: currentLevel)
-                    let scaledDamage = Int(Double(enemies[i].type.damage) * dmgMult)
 
-                    if enemies[i].type.isRanged {
+                    // Melee-only enemies always swing; bosses claw when close, throw plasma otherwise
+                    let useMelee = !type.isRanged || (type.hasMeleeAttack && dist <= type.meleeRange)
+                    if useMelee {
+                        let reach = type.isRanged ? type.meleeRange : type.attackRange
+                        if dist <= reach {
+                            let scaledDamage = Int(Double(type.damage) * dmgMult)
+                            player.takeDamage(scaledDamage)
+                            damageFlashTimer = 0.3
+                            lastDamageDirection = atan2(dy, dx)
+                            screenShakeIntensity = min(1.0, Double(type.damage) / 30.0)
+                            screenShakeTimer = 0.3
+                        }
+                    } else {
                         // Spawn a visible projectile aimed at the player
                         let pdx = player.x - enemies[i].x
                         let pdy = player.y - enemies[i].y
@@ -268,25 +302,15 @@ final class GameEngine {
                         guard pdist > 0.1 else { continue }
                         let pDirX = pdx / pdist
                         let pDirY = pdy / pdist
-                        let projType: ProjectileType = enemies[i].type == .imp ? .fireball : .bullet
-                        let projSpeed: Double = (enemies[i].type == .imp ? 5.0 : 10.0) * spdMult
                         projectiles.append(Projectile(
                             x: enemies[i].x + pDirX * 0.5,
                             y: enemies[i].y + pDirY * 0.5,
                             dirX: pDirX, dirY: pDirY,
-                            speed: projSpeed,
-                            damage: scaledDamage,
+                            speed: type.projectileSpeed * spdMult,
+                            damage: Int(Double(type.projectileDamage) * dmgMult),
                             isEnemy: true,
-                            type: projType
+                            type: type.projectileType
                         ))
-                    } else {
-                        if dist <= enemies[i].type.attackRange {
-                            player.takeDamage(scaledDamage)
-                            damageFlashTimer = 0.3
-                            lastDamageDirection = atan2(dy, dx)
-                            screenShakeIntensity = min(1.0, Double(enemies[i].type.damage) / 30.0)
-                            screenShakeTimer = 0.3
-                        }
                     }
                 }
             }
@@ -401,8 +425,12 @@ final class GameEngine {
 
             if let (enemyIdx, _) = castAttackRay(fromX: player.x, fromY: player.y, dirX: rayDirX, dirY: rayDirY, range: def.range) {
                 let wasAlive = enemies[enemyIdx].isAlive
+                let wasDormant = isDormant(enemies[enemyIdx])
                 enemies[enemyIdx].takeDamage(def.damage * damageMult)
                 hitMarkerTimer = 0.15
+                if wasDormant && enemies[enemyIdx].type.isBoss && !isDormant(enemies[enemyIdx]) {
+                    bossAlertedThisFrame = true
+                }
                 if wasAlive && enemies[enemyIdx].health <= 0 {
                     killCount += 1
                     // 30% chance to drop health or ammo
@@ -439,7 +467,7 @@ final class GameEngine {
 
             // Perpendicular distance from ray
             let perpDist = abs(ex * (-dirY) + ey * dirX)
-            let hitRadius = 0.4
+            let hitRadius = enemies[i].type.hitRadius
 
             guard perpDist < hitRadius else { continue }
 
@@ -489,8 +517,25 @@ final class GameEngine {
                 enemies[i].patrolTarget = nil
                 enemies[i].state = .chasing
                 enemyAlertedThisFrame = true
+                if enemies[i].type.isBoss { bossAlertedThisFrame = true }
             }
         }
+    }
+
+    /// Idle or patrolling: the enemy has not noticed the player yet
+    private func isDormant(_ enemy: Enemy) -> Bool {
+        switch enemy.state {
+        case .idle, .patrolling: return true
+        default: return false
+        }
+    }
+
+    /// The boss currently engaged with the player, if any (dormant bosses stay hidden)
+    var activeBoss: BossStatus? {
+        for enemy in enemies where enemy.type.isBoss && enemy.isAlive && !isDormant(enemy) {
+            return BossStatus(name: enemy.type.displayName, health: enemy.health, maxHealth: enemy.maxHealth)
+        }
+        return nil
     }
 
     // MARK: - Player-Enemy Separation

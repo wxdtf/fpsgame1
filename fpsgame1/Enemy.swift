@@ -9,12 +9,15 @@ enum EnemyType: Int {
     case imp = 0
     case demon = 1
     case soldier = 2
+    /// Boss: towering horned demon with claws and green plasma (E1M4 arena)
+    case baron = 3
 
     var maxHealth: Int {
         switch self {
         case .imp: return 60
         case .demon: return 100
         case .soldier: return 50
+        case .baron: return 500
         }
     }
 
@@ -23,14 +26,17 @@ enum EnemyType: Int {
         case .imp: return 1.5
         case .demon: return 2.5
         case .soldier: return 1.2
+        case .baron: return 1.4
         }
     }
 
+    /// Damage of the melee attack (and of the projectile unless projectileDamage differs)
     var damage: Int {
         switch self {
         case .imp: return 10
         case .demon: return 25
         case .soldier: return 15
+        case .baron: return 40
         }
     }
 
@@ -39,12 +45,13 @@ enum EnemyType: Int {
         case .imp: return 1.5
         case .demon: return 0.8
         case .soldier: return 1.2
+        case .baron: return 1.1
         }
     }
 
     var isRanged: Bool {
         switch self {
-        case .imp, .soldier: return true
+        case .imp, .soldier, .baron: return true
         case .demon: return false
         }
     }
@@ -54,10 +61,57 @@ enum EnemyType: Int {
         case .imp: return 10.0
         case .demon: return 1.8
         case .soldier: return 12.0
+        case .baron: return 11.0
         }
     }
 
     var sightRange: Double { GameConstants.enemySightRange }
+
+    /// Ranged enemies that switch to a claw attack once the player is within meleeRange
+    var hasMeleeAttack: Bool { self == .baron }
+    var meleeRange: Double { 1.9 }
+
+    /// Keeps walking toward the player between ranged attacks instead of standing still
+    var advancesDuringCooldown: Bool { self == .baron }
+
+    var projectileType: ProjectileType {
+        switch self {
+        case .imp, .demon: return .fireball
+        case .soldier: return .bullet
+        case .baron: return .plasma
+        }
+    }
+
+    var projectileSpeed: Double {
+        switch self {
+        case .imp, .demon: return 5.0
+        case .soldier: return 10.0
+        case .baron: return 7.0
+        }
+    }
+
+    var projectileDamage: Int { self == .baron ? 25 : damage }
+
+    /// Length of the attack animation and the moment within it when damage lands
+    var attackDuration: Double { self == .baron ? 0.5 : 0.3 }
+    var attackHitTime: Double { self == .baron ? 0.3 : 0.15 }
+
+    var isBoss: Bool { self == .baron }
+
+    /// On-screen size relative to a regular enemy (feet stay on the floor)
+    var spriteScale: Double { self == .baron ? 1.25 : 1.0 }
+
+    /// Half-width of the hitbox used for the player's hitscan weapons
+    var hitRadius: Double { self == .baron ? 0.55 : 0.4 }
+
+    var displayName: String {
+        switch self {
+        case .imp: return "IMP"
+        case .demon: return "DEMON"
+        case .soldier: return "SOLDIER"
+        case .baron: return "BARON OF HELL"
+        }
+    }
 
     /// Probability that a hit makes the enemy flinch. Flinching interrupts attacks and
     /// movement, so tough enemies get a low value and keep advancing under sustained
@@ -67,6 +121,7 @@ enum EnemyType: Int {
         case .imp: return 0.55
         case .demon: return 0.3
         case .soldier: return 0.65
+        case .baron: return 0.12
         }
     }
 
@@ -76,6 +131,7 @@ enum EnemyType: Int {
         case .imp: return "IMPS"
         case .demon: return "DEMONS"
         case .soldier: return "SOLDIERS"
+        case .baron: return "BARONS"
         }
     }
 }
@@ -97,6 +153,8 @@ struct Enemy: Identifiable {
     var y: Double
     var angle: Double = 0
     var health: Int
+    /// Health at spawn after difficulty scaling (for the boss health bar)
+    var maxHealth: Int
     var state: AIState = .idle
     var animationFrame: Int = 0
     var animationTimer: Double = 0
@@ -117,6 +175,7 @@ struct Enemy: Identifiable {
         self.x = x
         self.y = y
         self.health = type.maxHealth
+        self.maxHealth = type.maxHealth
     }
 
     var isDead: Bool {
@@ -224,6 +283,10 @@ struct Enemy: Identifiable {
                         animationFrame = 0
                         animationTimer = 0
                         hasDealtDamageThisAttack = false
+                    } else if type.advancesDuringCooldown && distToPlayer > type.meleeRange {
+                        // Bosses keep closing in between attacks
+                        moveToward(targetX: playerX, targetY: playerY, deltaTime: deltaTime, world: world,
+                                   stopDistance: 1.0)
                     }
                 } else {
                     moveToward(targetX: playerX, targetY: playerY, deltaTime: deltaTime, world: world)
@@ -235,7 +298,7 @@ struct Enemy: Identifiable {
 
         case .attacking:
             angle = angleToPlayer
-            if animationTimer >= 0.3 {
+            if animationTimer >= type.attackDuration {
                 // Attack resolves - damage is dealt by GameEngine
                 state = .chasing
                 attackCooldown = type.attackCooldownTime
