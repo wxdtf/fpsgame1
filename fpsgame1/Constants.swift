@@ -42,6 +42,18 @@ enum GameConstants {
     static let maxBullets = 200
     static let maxShells = 50
 
+    // Hazards
+    /// Damage dealt on each tick while standing on a damage floor (nukage)
+    static let damageFloorDamage = 5
+    /// Seconds between damage-floor ticks
+    static let damageFloorInterval: Double = 0.5
+
+    // Enemy AI
+    /// How far (in tiles) an idle enemy may wander from its position
+    static let enemyPatrolRadius = 3
+    /// Speed multiplier while wandering, relative to chase speed
+    static let enemyPatrolSpeedMultiplier: Double = 0.5
+
     // Difficulty scaling per level
     static func difficultyHealthMultiplier(for level: Int) -> Double {
         switch level {

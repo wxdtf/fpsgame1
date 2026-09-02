@@ -43,8 +43,17 @@ struct ContentView: View {
                     totalEnemies: viewModel.totalEnemies,
                     elapsedTime: viewModel.elapsedTime,
                     currentLevel: viewModel.currentLevel,
+                    isFinalLevel: viewModel.isFinalLevel,
                     onContinue: {
                         viewModel.advanceToNextLevel()
+                    }
+                )
+
+            case .campaignComplete:
+                CampaignCompleteView(
+                    results: viewModel.levelResults,
+                    onContinue: {
+                        viewModel.returnToMenu()
                     }
                 )
             }

@@ -58,6 +58,26 @@ enum EnemyType: Int {
     }
 
     var sightRange: Double { GameConstants.enemySightRange }
+
+    /// Probability that a hit makes the enemy flinch. Flinching interrupts attacks and
+    /// movement, so tough enemies get a low value and keep advancing under sustained
+    /// fire instead of being stun-locked by the chaingun.
+    var painChance: Double {
+        switch self {
+        case .imp: return 0.55
+        case .demon: return 0.3
+        case .soldier: return 0.65
+        }
+    }
+
+    /// Upper-case plural for objective text, e.g. "EXTERMINATE DEMONS"
+    var pluralName: String {
+        switch self {
+        case .imp: return "IMPS"
+        case .demon: return "DEMONS"
+        case .soldier: return "SOLDIERS"
+        }
+    }
 }
 
 enum AIState {
@@ -84,6 +104,13 @@ struct Enemy: Identifiable {
     var alertTimer: Double = 0
     var patrolTarget: (Double, Double)?
     var hasDealtDamageThisAttack: Bool = false
+    /// Seconds until an idle enemy considers wandering to a new spot
+    var idleTimer: Double = Double.random(in: 2.0...6.0)
+    /// Unlocked door tile this enemy is waiting on; the engine opens it and clears the request
+    var doorRequest: (x: Int, y: Int)? = nil
+    /// Stuck counter — increments when enemy can't move, triggers wall-avoidance steering
+    var stuckTimer: Double = 0
+    var wallAvoidAngle: Double = 0
 
     init(type: EnemyType, x: Double, y: Double) {
         self.type = type
@@ -101,6 +128,9 @@ struct Enemy: Identifiable {
         if case .dying = state { return true }
         return false
     }
+
+    /// Still a threat: counts toward kill objectives, blocks doors and takes hits
+    var isAlive: Bool { health > 0 && !isDead && !isDying }
 
     var spriteFrameOffset: Int {
         switch state {
@@ -136,8 +166,8 @@ struct Enemy: Identifiable {
         default: return 0.0
         }
     }
-    
-    mutating func update(deltaTime: Double, playerX: Double, playerY: Double, world: GameWorld) {
+
+    mutating func update(deltaTime: Double, playerX: Double, playerY: Double, world: GameWorld, nav: NavigationField) {
         animationTimer += deltaTime
 
         // Only cycle animation frames for non-attack states.
@@ -164,27 +194,43 @@ struct Enemy: Identifiable {
             if distToPlayer < type.sightRange && canSeePlayer(playerX: playerX, playerY: playerY, world: world) {
                 state = .chasing
                 alertTimer = 0.5
+            } else {
+                // Wander occasionally so the level feels inhabited
+                idleTimer -= deltaTime
+                if idleTimer <= 0 {
+                    idleTimer = Double.random(in: 3.0...8.0)
+                    if let target = pickPatrolTarget(world: world) {
+                        patrolTarget = target
+                        state = .patrolling
+                    }
+                }
             }
 
         case .patrolling:
             if distToPlayer < type.sightRange && canSeePlayer(playerX: playerX, playerY: playerY, world: world) {
+                patrolTarget = nil
                 state = .chasing
                 alertTimer = 0.5
             } else {
-                moveTowardTarget(deltaTime: deltaTime, world: world)
+                moveTowardPatrolTarget(deltaTime: deltaTime, world: world)
             }
 
         case .chasing:
-            angle = angleToPlayer
-            if distToPlayer <= type.attackRange && canSeePlayer(playerX: playerX, playerY: playerY, world: world) {
-                if attackCooldown <= 0 {
-                    state = .attacking
-                    animationFrame = 0
-                    animationTimer = 0
-                    hasDealtDamageThisAttack = false
+            if canSeePlayer(playerX: playerX, playerY: playerY, world: world) {
+                angle = angleToPlayer
+                if distToPlayer <= type.attackRange {
+                    if attackCooldown <= 0 {
+                        state = .attacking
+                        animationFrame = 0
+                        animationTimer = 0
+                        hasDealtDamageThisAttack = false
+                    }
+                } else {
+                    moveToward(targetX: playerX, targetY: playerY, deltaTime: deltaTime, world: world)
                 }
             } else {
-                moveToward(targetX: playerX, targetY: playerY, deltaTime: deltaTime, world: world)
+                // Lost sight: follow the navigation field around corners and through doors
+                huntAlongPath(deltaTime: deltaTime, world: world, nav: nav)
             }
 
         case .attacking:
@@ -230,9 +276,24 @@ struct Enemy: Identifiable {
             health = 0
             state = .dying(timer: 1.0)
             animationFrame = 0
-        } else {
+            return
+        }
+
+        // Already flinching: don't extend the stun, so rapid fire can't lock an enemy forever
+        if case .hurt = state { return }
+
+        if Double.random(in: 0..<1) < type.painChance {
             state = .hurt(timer: 0.2)
             animationFrame = 0
+        } else {
+            // No flinch, but being shot always wakes the enemy up
+            switch state {
+            case .idle, .patrolling:
+                patrolTarget = nil
+                state = .chasing
+            default:
+                break
+            }
         }
     }
 
@@ -240,9 +301,10 @@ struct Enemy: Identifiable {
         let dx = playerX - x
         let dy = playerY - y
         let dist = sqrt(dx * dx + dy * dy)
-        if dist < 0.1 { return true }
 
         let steps = Int(dist * 4)
+        // Point-blank range: nothing can be in between (also keeps 1..<steps a valid range)
+        guard steps > 1 else { return true }
         for i in 1..<steps {
             let t = Double(i) / Double(steps)
             let checkX = x + dx * t
@@ -256,17 +318,17 @@ struct Enemy: Identifiable {
         return true
     }
 
-    /// Stuck counter — increments when enemy can't move, triggers wall-avoidance steering
-    var stuckTimer: Double = 0
-    var wallAvoidAngle: Double = 0
+    // MARK: - Movement
 
-    private mutating func moveToward(targetX: Double, targetY: Double, deltaTime: Double, world: GameWorld) {
+    /// Move toward a target with wall sliding. Stops within `stopDistance` of it.
+    private mutating func moveToward(targetX: Double, targetY: Double, deltaTime: Double, world: GameWorld,
+                                     stopDistance: Double = 0.5, speedMult: Double = 1.0) {
         let dx = targetX - x
         let dy = targetY - y
         let dist = sqrt(dx * dx + dy * dy)
-        guard dist > 0.5 else { return }
+        guard dist > stopDistance else { return }
 
-        let speed = type.speed * deltaTime
+        let speed = type.speed * speedMult * deltaTime
         let radius = 0.25
 
         // Primary direction: straight toward target
@@ -277,6 +339,15 @@ struct Enemy: Identifiable {
         if stuckTimer > 0.15 {
             dirX = cos(wallAvoidAngle)
             dirY = sin(wallAvoidAngle)
+        }
+
+        // A closed, unlocked door directly ahead: ask the engine to open it
+        var waitingForDoor = false
+        let probeX = Int(x + dirX * 0.6)
+        let probeY = Int(y + dirY * 0.6)
+        if world.tileAt(x: probeX, y: probeY) == .door && world.isSolid(x: probeX, y: probeY) {
+            doorRequest = (x: probeX, y: probeY)
+            waitingForDoor = true
         }
 
         let moveX = dirX * speed
@@ -295,6 +366,11 @@ struct Enemy: Identifiable {
         }
 
         if !moved {
+            if waitingForDoor {
+                // Hold position while the door opens instead of sliding along it
+                stuckTimer = 0
+                return
+            }
             stuckTimer += deltaTime
             if stuckTimer > 0.15 {
                 // Try wall-sliding: perpendicular directions
@@ -320,7 +396,19 @@ struct Enemy: Identifiable {
         }
     }
 
-    private mutating func moveTowardTarget(deltaTime: Double, world: GameWorld) {
+    /// Chase without line of sight: step toward the neighbouring tile closest to the player
+    private mutating func huntAlongPath(deltaTime: Double, world: GameWorld, nav: NavigationField) {
+        guard let next = nav.nextStep(fromX: Int(x), fromY: Int(y)) else {
+            // No route (e.g. player behind a locked door): hold position
+            return
+        }
+        let targetX = Double(next.x) + 0.5
+        let targetY = Double(next.y) + 0.5
+        angle = atan2(targetY - y, targetX - x)
+        moveToward(targetX: targetX, targetY: targetY, deltaTime: deltaTime, world: world, stopDistance: 0.05)
+    }
+
+    private mutating func moveTowardPatrolTarget(deltaTime: Double, world: GameWorld) {
         guard let target = patrolTarget else {
             state = .idle
             return
@@ -328,12 +416,50 @@ struct Enemy: Identifiable {
         let dx = target.0 - x
         let dy = target.1 - y
         let dist = sqrt(dx * dx + dy * dy)
-        if dist < 0.5 {
+        if dist < 0.3 || stuckTimer > 0.5 {
+            // Arrived, or something is in the way — rest again
             patrolTarget = nil
+            stuckTimer = 0
             state = .idle
             return
         }
         angle = atan2(dy, dx)
-        moveToward(targetX: target.0, targetY: target.1, deltaTime: deltaTime, world: world)
+        moveToward(targetX: target.0, targetY: target.1, deltaTime: deltaTime, world: world,
+                   stopDistance: 0.25, speedMult: GameConstants.enemyPatrolSpeedMultiplier)
+    }
+
+    /// Pick a nearby floor tile that can be reached by walking in a straight line
+    private func pickPatrolTarget(world: GameWorld) -> (Double, Double)? {
+        let radius = GameConstants.enemyPatrolRadius
+        let hereX = Int(x)
+        let hereY = Int(y)
+        for _ in 0..<6 {
+            let tx = hereX + Int.random(in: -radius...radius)
+            let ty = hereY + Int.random(in: -radius...radius)
+            if tx == hereX && ty == hereY { continue }
+            guard world.tileAt(x: tx, y: ty) == .empty else { continue }
+            let targetX = Double(tx) + 0.5
+            let targetY = Double(ty) + 0.5
+            if isPathClear(toX: targetX, toY: targetY, world: world) {
+                return (targetX, targetY)
+            }
+        }
+        return nil
+    }
+
+    /// Whether the enemy can walk straight to the target without clipping walls or closed doors
+    private func isPathClear(toX: Double, toY: Double, world: GameWorld) -> Bool {
+        let dx = toX - x
+        let dy = toY - y
+        let dist = sqrt(dx * dx + dy * dy)
+        guard dist > 0.01 else { return true }
+        let steps = max(1, Int(dist / 0.2))
+        for i in 1...steps {
+            let t = Double(i) / Double(steps)
+            if !world.isPassable(x: x + dx * t, y: y + dy * t, radius: 0.25) {
+                return false
+            }
+        }
+        return true
     }
 }

@@ -40,6 +40,8 @@ final class GameViewModel {
     var faceFrameIndex: Int = 0
     var objectiveText: String = ""
     var objectiveComplete: Bool = false
+    var isFinalLevel: Bool = false
+    var levelResults: [LevelResult] = []
 
     let inputManager = InputManager()
 
@@ -120,61 +122,55 @@ final class GameViewModel {
         audio.playBGM(level: engine.currentLevel)
     }
 
-    func restartGame() {
-        // Clear any lingering input to prevent uncontrolled movement on respawn
+    /// Drop any held keys / mouse state so a new screen doesn't inherit stale input
+    private func clearInput() {
         inputManager.keys.removeAll()
         inputManager.mouseDeltaX = 0
         inputManager.mouseDeltaY = 0
         inputManager.mouseHeld = false
         inputManager.mouseClicked = false
-
-        gameEngine?.restart()
-        gameState = .playing
-        if useGPU, let engine = gameEngine {
-            metalRenderer?.uploadWorldData(world: engine.world)
-        }
-        prevPlayerHealth = gameEngine?.player.health ?? 100
-        prevKillCount = 0
-        prevPickupFlash = 0
-        prevBobPhase = 0
-        prevWeaponSwitching = false
-        prevGameState = .playing
-        lastFrameTime = CACurrentMediaTime()
-        updateUIState()
-        audio.playBGM(level: gameEngine?.currentLevel ?? 1)
     }
 
+    /// After death: reload the current level (not the whole campaign) behind its briefing
     func restartWithBriefing() {
-        // Clear any lingering input
-        inputManager.keys.removeAll()
-        inputManager.mouseDeltaX = 0
-        inputManager.mouseDeltaY = 0
-        inputManager.mouseHeld = false
-        inputManager.mouseClicked = false
-
-        // Reset level but keep engine paused during briefing
-        gameEngine?.restart()
+        clearInput()
+        gameEngine?.restartLevel()
+        // Keep the engine paused during the briefing
         gameEngine?.state = .paused
         audio.stopBGM()
         gameState = .briefing
         currentLevel = gameEngine?.currentLevel ?? 1
     }
 
+    /// From the level summary: next briefing, or the campaign summary after the final level
     func advanceToNextLevel() {
-        // Clear any lingering input
-        inputManager.keys.removeAll()
-        inputManager.mouseDeltaX = 0
-        inputManager.mouseDeltaY = 0
-        inputManager.mouseHeld = false
-        inputManager.mouseClicked = false
-
-        gameEngine?.nextLevel()
-        // Pause engine during briefing so it doesn't update in background
-        gameEngine?.state = .paused
+        clearInput()
+        guard let engine = gameEngine else { return }
         audio.stopBGM()
+
+        if engine.isFinalLevel {
+            engine.state = .campaignComplete
+            levelResults = engine.levelResults
+            gameState = .campaignComplete
+            return
+        }
+
+        engine.nextLevel()
+        // Pause engine during briefing so it doesn't update in background
+        engine.state = .paused
         // Show briefing before starting the next level
         gameState = .briefing
-        currentLevel = gameEngine?.currentLevel ?? 1
+        currentLevel = engine.currentLevel
+    }
+
+    /// From the campaign summary: reset to level 1 and show the title screen
+    func returnToMenu() {
+        clearInput()
+        gameEngine?.resetToMenu()
+        audio.stopBGM()
+        levelResults = []
+        gameState = .menu
+        currentLevel = 1
     }
 
     /// Called from briefing screen when player presses enter to begin next level
@@ -345,6 +341,9 @@ final class GameViewModel {
                 isTransitioningLevel = true
                 levelTransitionTimer = 0
                 levelTransitionOpacity = 0
+            case .campaignComplete:
+                audio.stopBGM()
+                audio.playLevelComplete()
             case .dead:
                 audio.stopBGM()
             case .paused:
@@ -558,6 +557,12 @@ final class GameViewModel {
         // Mission objective
         objectiveText = engine.objectiveText
         objectiveComplete = engine.missionObjectiveComplete
+
+        // Campaign progress
+        isFinalLevel = engine.isFinalLevel
+        if levelResults.count != engine.levelResults.count {
+            levelResults = engine.levelResults
+        }
 
         let ammoType = WeaponDefinition.forType(engine.player.currentWeapon).ammoType
         if let type = ammoType {
