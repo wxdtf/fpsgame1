@@ -414,6 +414,8 @@ final class AudioManager {
             return generateBGM_MilitaryBase(fmt: fmt, sr: sampleRate, pi2: twoPi, noise: noise)
         case 2:
             return generateBGM_HellsGateway(fmt: fmt, sr: sampleRate, pi2: twoPi, noise: noise)
+        case 4:
+            return generateBGM_AnomalyCore(fmt: fmt, sr: sampleRate, pi2: twoPi, noise: noise)
         default:
             return generateBGM_ToxinRefinery(fmt: fmt, sr: sampleRate, pi2: twoPi, noise: noise)
         }
@@ -690,6 +692,102 @@ final class AudioManager {
             // Add a subtle pulsing effect synced to beat
             let pulse = (1.0 + sin(beatPos * pi2)) * 0.5
             s += buzz * (0.8 + pulse * 0.2)
+
+            let loopEnv: Float = min(1.0, t / 0.01) * min(1.0, (duration - t) / 0.01)
+            data[i] = max(-1, min(1, s * loopEnv * 0.7))
+        }
+        return buffer
+    }
+
+    // MARK: Level 4 — "Anomaly Core" (Finale/Relentless)
+    // Fast, heavy and dissonant. Galloping kick, tritone power-chord riff,
+    // screaming lead, swelling choir pad — the base and hell colliding.
+    private func generateBGM_AnomalyCore(
+        fmt: AVAudioFormat, sr: Float, pi2: Float,
+        noise: (Int, Int) -> Float
+    ) -> AVAudioPCMBuffer? {
+        let bpm: Float = 170
+        let beatDur = 60.0 / bpm
+        // E minor with tritone: E2=82.4, Bb1=58.3, G2=98.0, F2=87.3, D2=73.4, B1=61.7
+        // Gallop riff: root-root-tritone-root, then a descending turn
+        let bassNotes: [Float] = [82.4, 82.4, 58.3, 82.4,  82.4, 82.4, 98.0, 87.3,
+                                   82.4, 82.4, 58.3, 82.4,  73.4, 73.4, 61.7, 58.3]
+        // Lead: screaming phrase every other bar
+        let leadNotes: [Float] = [0, 0, 0, 0,  329.6, 349.2, 329.6, 293.7,
+                                   0, 0, 0, 0,  466.2, 440.0, 392.0, 349.2]
+        let totalBeats = leadNotes.count
+        let duration = Float(totalBeats) * beatDur
+        let frameCount = AVAudioFrameCount(duration * sr)
+
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: frameCount) else { return nil }
+        buffer.frameLength = frameCount
+        guard let data = buffer.floatChannelData?[0] else { return nil }
+
+        for i in 0..<Int(frameCount) {
+            let t = Float(i) / sr
+            let beatPos = t / beatDur
+            let beat = Int(beatPos) % totalBeats
+            let beatFrac = beatPos - floor(beatPos)
+            let beatTime = beatFrac * beatDur
+            let eighthPos = beatPos * 2
+            let eighthFrac = eighthPos - floor(eighthPos)
+            let sixteenthPos = beatPos * 4
+            let sixteenthFrac = sixteenthPos - floor(sixteenthPos)
+            let sixteenthTime = sixteenthFrac * beatDur / 4
+            var s: Float = 0
+
+            // GALLOP KICK: 16ths with a gallop accent (hit, rest, hit, hit)
+            let sixteenth = Int(sixteenthPos) % 4
+            let gallopAccent: Float = sixteenth == 0 ? 1.0 : (sixteenth == 1 ? 0.0 : 0.65)
+            if gallopAccent > 0 {
+                let kEnv = max(0, 1.0 - sixteenthTime / 0.05)
+                let kFreq: Float = 48 + 100 * max(0, 1.0 - sixteenthTime / 0.035)
+                s += sin(sixteenthTime * kFreq * pi2) * kEnv * kEnv * 0.4 * gallopAccent
+            }
+
+            // SNARE: cracking backbeat
+            if beat % 2 == 1 {
+                let sEnv = max(0, 1.0 - beatTime / 0.09)
+                s += (noise(i, 2654435761) * 0.6 + sin(beatTime * 200 * pi2) * 0.3) * sEnv * 0.42
+            }
+
+            // CRASH: first beat of every 8
+            if beat % 8 == 0 {
+                let cEnv = max(0, 1.0 - beatTime / (beatDur * 1.5))
+                s += noise(i, 981234567) * cEnv * 0.12
+            }
+
+            // HI-HAT: tight 8ths
+            let hhTime = eighthFrac * beatDur / 2
+            let hhEnv = max(0, 1.0 - hhTime / 0.02)
+            s += noise(i, 374761393) * hhEnv * 0.06
+
+            // BASS RIFF: power chord (root, fifth, octave), clipped, palm-muted 8ths
+            let bassIdx = Int(eighthPos) % bassNotes.count
+            let bassFreq = bassNotes[bassIdx]
+            let bPhase = t * bassFreq * pi2
+            var riff = sin(bPhase) + sin(bPhase * 1.5) * 0.6 + sin(bPhase * 2) * 0.7 +
+                       sin(bPhase * 3) * 0.4 + sin(bPhase * 4) * 0.25
+            riff = max(-1.4, min(1.4, riff * 1.4))  // Clip for grit
+            let riffEnv: Float = min(1.0, eighthFrac * 30) * max(0.15, 1.0 - eighthFrac * 1.4)
+            s += riff * riffEnv * 0.15
+
+            // LEAD: screaming saw with fast vibrato
+            let leadFreq = leadNotes[beat]
+            if leadFreq > 0 {
+                let vibrato = sin(t * 6.5 * pi2) * 4
+                let lPhase = t * (leadFreq + vibrato) * pi2
+                let lead = sin(lPhase) + sin(lPhase * 2) * 0.5 + sin(lPhase * 3) * 0.33 +
+                           sin(lPhase * 4) * 0.25 + sin(lPhase * 5) * 0.2
+                let leadEnv = min(1.0, beatFrac * 20) * max(0, 1.0 - beatFrac * 1.1)
+                s += lead * leadEnv * 0.09
+            }
+
+            // PAD: detuned choir on root and tritone, swelling over four bars
+            let swell = (1.0 + sin(t / (beatDur * 16) * pi2 - pi2 / 4)) * 0.5
+            let choir = sin(t * 41.2 * pi2) + sin(t * 41.6 * pi2) * 0.7 +
+                        sin(t * 58.3 * pi2) * 0.5 + sin(t * 58.7 * pi2) * 0.35
+            s += choir * 0.03 * (0.5 + swell * 0.5)
 
             let loopEnv: Float = min(1.0, t / 0.01) * min(1.0, (duration - t) / 0.01)
             data[i] = max(-1, min(1, s * loopEnv * 0.7))

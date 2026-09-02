@@ -11,9 +11,9 @@ place to look before starting new work; update it when a milestone lands.
 | Player | Movement with wall sliding and unstick, sprint, view bob, armor absorption, berserk, keys, 4 weapons (fist, pistol, shotgun, chaingun) with switch/fire animations. |
 | Enemies | 3 types (imp, soldier, demon). State machine: idle → patrol → chase → attack → hurt → dying → dead. Line-of-sight detection, projectile and melee attacks, tile-based pathfinding when out of sight, door opening, pain chance, wandering patrols. |
 | World | 32×32 tile maps, 11 tile types, regular + colour-locked doors with auto-close, damage floors (nukage), exit portal, per-level difficulty scaling. |
-| Campaign | 3 levels with briefings, data-driven mission objectives (item retrieval / extermination), level summary with rating, campaign summary, death restarts the current level. |
+| Campaign | 4 levels with briefings, data-driven mission objectives (item retrieval / extermination), level summary with rating, campaign summary, death restarts the current level. |
 | UI / feedback | Title, briefing (typewriter), pause, death, level and campaign summary screens. HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, screen shake, muzzle flash, death camera. |
-| Audio | Fully procedural: 14 sound effects and one looping BGM track per level, generated at runtime with AVAudioEngine. |
+| Audio | Fully procedural: 14 sound effects and one looping BGM track per level (4 tracks), generated at runtime with AVAudioEngine. |
 | Assets | None on disk. Every texture, sprite, face frame and sound is generated procedurally in Swift. |
 | Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). GitHub Actions builds the app on a macOS runner and runs the validator on every push and PR. No unit tests yet. |
 
@@ -61,7 +61,9 @@ Found by reviewing the code and by running the new level validator:
 
 ## Milestone 2 — Content
 
-- [ ] Level 4 finale ("E1M4") with an `exterminateAll` objective and its own BGM track.
+- [x] Level 4 finale ("E1M4: Anomaly Core"): the UAC base wrapped around a hell core, all
+      three key colours in sequence (the yellow key finally gets used), an `exterminateAll`
+      objective, its own difficulty tier and a galloping finale BGM track.
 - [ ] Fourth enemy type (e.g. a heavy boss for the finale) — sprite sheet generator, AI
       parameters, sounds.
 - [ ] A projectile weapon for the player (rocket launcher or plasma) with splash damage.

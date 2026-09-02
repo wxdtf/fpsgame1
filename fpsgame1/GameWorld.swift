@@ -203,11 +203,12 @@ struct GameWorld {
         case 1: return level1Data()
         case 2: return level2Data()
         case 3: return level3Data()
+        case 4: return level4Data()
         default: return level1Data()
         }
     }
 
-    static let maxLevel = 3
+    static let maxLevel = 4
 
     static func briefingText(for level: Int) -> (title: String, lines: [String]) {
         switch level {
@@ -246,6 +247,19 @@ struct GameWorld {
                     "EXTERMINATE ALL DEMONS. Leave none alive.",
                     "",
                     "Objective: Exterminate all demons."
+                ]
+            )
+        case 4:
+            return (
+                "E1M4: Anomaly Core",
+                [
+                    "The anomaly beneath the base is awake and",
+                    "every demon left on the moon is converging.",
+                    "Take the RED KEY from the generator room,",
+                    "then the BLUE and YELLOW KEYS from the core.",
+                    "Nothing leaves this place alive.",
+                    "",
+                    "Objective: Exterminate all hostiles."
                 ]
             )
         default:
@@ -574,6 +588,143 @@ struct GameWorld {
                 (.ammoShells(amount: 12), 30.5, 30.5),
             ],
             objective: .exterminate(.demon)
+        )
+    }
+
+    // MARK: - Level 4: "Anomaly Core" — Finale (UAC base wrapped around a hell core)
+    //
+    // Design: The base (metal, south and west) surrounds a tech hub. The RED KEY sits in
+    // the generator room; the RED DOOR north of the hub opens Containment (brick, torches,
+    // nukage) holding the BLUE KEY; the BLUE DOOR opens the Furnace (metal) holding the
+    // YELLOW KEY; the YELLOW DOOR drops into the final arena and the exit.
+    // Every enemy must die. ~32 enemies, finale difficulty.
+
+    private static func level4Data() -> LevelData {
+        // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal,
+        // 7/8/9=locked door (red/blue/yellow), 10=nukage
+        let layout: [[Int]] = [
+            //0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // 0
+            [1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,2,10,0,0,10,2], // 1
+            [1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,2,10,0,0,0,2], // 2
+            [1,0,0,0,0,4,0,0,0,5,0,0,5,0,0,0,2,0,0,0,5,0,0,5,0,0,2,10,0,0,0,2], // 3
+            [1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,2,2,4,2,2,2], // 4
+            [1,1,1,1,1,1,0,10,10,0,0,0,0,10,10,0,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 5
+            [1,0,0,0,0,0,0,10,10,0,0,0,0,10,10,0,2,0,0,0,0,0,10,0,0,0,0,0,0,0,0,2], // 6
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,10,0,0,0,0,0,0,0,0,2], // 7
+            [1,0,0,5,0,0,0,0,0,5,0,0,5,0,0,0,2,0,0,0,5,0,0,5,0,0,0,5,0,0,0,2], // 8
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 9
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 10
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,7,1,2,2,2,2,2,2,2,2,2,9,2,2,2,2,2], // 11
+            [2,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,3], // 12
+            [2,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,3], // 13
+            [2,0,0,0,2,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,3,0,0,0,3,0,0,3], // 14
+            [2,0,0,0,0,0,0,0,0,3,0,0,0,3,0,0,0,3,0,0,0,3,0,0,0,0,10,0,0,0,0,3], // 15
+            [2,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,10,10,10,0,0,6,3], // 16
+            [2,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,10,0,0,0,0,3], // 17
+            [2,0,0,0,2,0,0,0,0,3,0,0,0,3,0,0,0,3,0,0,0,3,0,0,3,0,0,0,3,0,0,3], // 18
+            [2,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,3], // 19
+            [2,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,3], // 20
+            [2,2,2,2,4,2,2,2,2,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3], // 21
+            [2,0,0,0,0,0,2,0,0,0,0,0,2,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,0,0,0,2], // 22
+            [2,0,0,0,0,0,2,0,0,0,0,0,2,0,0,0,0,0,2,2,0,0,0,0,0,0,0,10,0,0,0,2], // 23
+            [2,0,0,0,0,0,2,0,0,0,0,0,2,0,0,0,0,0,2,2,0,0,0,0,0,0,0,10,0,0,0,2], // 24
+            [2,0,0,0,0,0,2,0,0,0,0,0,2,0,0,0,0,0,2,2,0,0,0,0,0,0,0,10,0,0,0,2], // 25
+            [2,0,0,0,0,0,2,2,2,4,2,2,2,2,2,4,2,2,2,2,2,2,2,2,2,4,2,2,2,2,2,2], // 26
+            [2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 27
+            [2,0,0,0,0,0,4,0,0,0,0,0,2,0,0,0,0,0,0,2,0,0,0,0,0,0,2,0,0,0,0,2], // 28
+            [2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 29
+            [2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 30
+            [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // 31
+        ]
+        return LevelData(
+            layout: layout,
+            playerStartX: 2.5, playerStartY: 28.5, playerStartAngle: 0,
+            enemies: [
+                // Base — corridor and rooms
+                (.soldier, 9.5, 29.5),
+                (.imp, 16.5, 28.5),
+                (.soldier, 24.5, 29.5),
+                (.soldier, 8.5, 23.5),
+                (.imp, 16.5, 23.5),
+                // Generator room (RED KEY)
+                (.demon, 22.5, 23.5),
+                (.soldier, 29.5, 24.5),
+                // West wing armory
+                (.imp, 6.5, 13.5),
+                (.soldier, 2.5, 19.5),
+                // Hub
+                (.imp, 12.5, 13.5),
+                (.imp, 18.5, 13.5),
+                (.demon, 15.5, 16.5),
+                (.soldier, 11.5, 19.5),
+                (.soldier, 19.5, 19.5),
+                // Containment (BLUE KEY)
+                (.demon, 7.5, 2.5),
+                (.imp, 13.5, 2.5),
+                (.demon, 10.5, 6.5),
+                (.imp, 14.5, 9.5),
+                (.demon, 2.5, 7.5),
+                (.imp, 4.5, 9.5),
+                // Furnace (YELLOW KEY)
+                (.soldier, 18.5, 2.5),
+                (.soldier, 24.5, 2.5),
+                (.demon, 21.5, 6.5),
+                (.imp, 18.5, 9.5),
+                (.imp, 25.5, 9.5),
+                (.soldier, 29.5, 6.5),
+                // Final arena
+                (.demon, 23.5, 13.5),
+                (.demon, 29.5, 13.5),
+                (.soldier, 26.5, 13.5),
+                (.demon, 23.5, 19.5),
+                (.imp, 26.5, 19.5),
+                (.imp, 29.5, 19.5),
+            ],
+            items: [
+                // Start room and storage
+                (.ammoBullets(amount: 20), 2.5, 26.5),
+                (.healthPack(amount: 25), 4.5, 23.5),
+                // Barracks — shotgun
+                (.shotgunPickup, 7.5, 23.5),
+                (.ammoShells(amount: 8), 10.5, 24.5),
+                // Lab
+                (.healthPack(amount: 25), 13.5, 24.5),
+                (.ammoBullets(amount: 20), 16.5, 22.5),
+                // Generator room — RED KEY behind the coolant leak
+                (.armorVest(amount: 50), 21.5, 22.5),
+                (.keyCard(color: .red), 29.5, 23.5),
+                // Corridor
+                (.healthPack(amount: 25), 28.5, 29.5),
+                // West wing armory — chaingun
+                (.chaingunPickup, 2.5, 13.5),
+                (.ammoBullets(amount: 30), 7.5, 19.5),
+                (.armorVest(amount: 25), 2.5, 16.5),
+                // Hub
+                (.healthPack(amount: 50), 15.5, 13.5),
+                (.ammoShells(amount: 12), 10.5, 15.5),
+                (.ammoBullets(amount: 30), 19.5, 16.5),
+                // Containment — BLUE KEY in the vault
+                (.keyCard(color: .blue), 2.5, 2.5),
+                (.healthPack(amount: 50), 3.5, 3.5),
+                (.ammoShells(amount: 10), 10.5, 9.5),
+                (.healthPack(amount: 25), 6.5, 8.5),
+                (.ammoBullets(amount: 30), 14.5, 1.5),
+                // Furnace — YELLOW KEY beside the nukage
+                (.keyCard(color: .yellow), 29.5, 2.5),
+                (.armorVest(amount: 50), 28.5, 1.5),
+                (.healthPack(amount: 50), 21.5, 9.5),
+                (.ammoShells(amount: 12), 17.5, 6.5),
+                (.ammoBullets(amount: 30), 26.5, 6.5),
+                // Final arena
+                (.berserkPack, 22.5, 16.5),
+                (.healthPack(amount: 50), 24.5, 12.5),
+                (.armorVest(amount: 50), 28.5, 12.5),
+                (.ammoShells(amount: 12), 22.5, 19.5),
+                (.ammoBullets(amount: 30), 30.5, 19.5),
+                (.healthPack(amount: 25), 29.5, 16.5),
+            ],
+            objective: .exterminateAll
         )
     }
 }
