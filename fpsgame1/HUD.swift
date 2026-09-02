@@ -50,6 +50,29 @@ struct HUDView: View {
                     .opacity(viewModel.objectiveComplete ? 0.6 : 0.85)
                 }
 
+                // Boss health bar (shown once a boss has noticed the player)
+                if viewModel.bossActive {
+                    VStack(spacing: 3) {
+                        Text(viewModel.bossName)
+                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                            .foregroundColor(.red)
+                            .shadow(color: .black, radius: 2)
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.black.opacity(0.6))
+                                .frame(width: 220, height: 10)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.red)
+                                .frame(width: max(0, 220 * viewModel.bossHealthFraction), height: 10)
+                        }
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2)
+                                .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                        )
+                    }
+                    .padding(.top, 6)
+                }
+
                 Spacer()
             }
 

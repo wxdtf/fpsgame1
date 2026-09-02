@@ -9,7 +9,7 @@ place to look before starting new work; update it when a milestone lands.
 |------|-------|
 | Rendering | Complete. Metal 3 compute raycaster (walls, floor, ceiling, fog, torch light, sliding doors, animated exit portal) with a multi-core CPU fallback. Sprites, projectiles and the weapon overlay are composited on the CPU with z-buffer occlusion. |
 | Player | Movement with wall sliding and unstick, sprint, view bob, armor absorption, berserk, keys, 4 weapons (fist, pistol, shotgun, chaingun) with switch/fire animations. |
-| Enemies | 3 types (imp, soldier, demon). State machine: idle → patrol → chase → attack → hurt → dying → dead. Line-of-sight detection, projectile and melee attacks, tile-based pathfinding when out of sight, door opening, pain chance, wandering patrols. |
+| Enemies | 4 types (imp, soldier, demon, and the Baron of Hell boss). State machine: idle → patrol → chase → attack → hurt → dying → dead. Line-of-sight detection, projectile and melee attacks, tile-based pathfinding when out of sight, door opening, pain chance, wandering patrols. Bosses claw up close, throw plasma at range, keep advancing between attacks and show a HUD health bar. |
 | World | 32×32 tile maps, 11 tile types, regular + colour-locked doors with auto-close, damage floors (nukage), exit portal, per-level difficulty scaling. |
 | Campaign | 4 levels with briefings, data-driven mission objectives (item retrieval / extermination), level summary with rating, campaign summary, death restarts the current level. |
 | UI / feedback | Title, briefing (typewriter), pause, death, level and campaign summary screens. HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, screen shake, muzzle flash, death camera. |
@@ -64,8 +64,9 @@ Found by reviewing the code and by running the new level validator:
 - [x] Level 4 finale ("E1M4: Anomaly Core"): the UAC base wrapped around a hell core, all
       three key colours in sequence (the yellow key finally gets used), an `exterminateAll`
       objective, its own difficulty tier and a galloping finale BGM track.
-- [ ] Fourth enemy type (e.g. a heavy boss for the finale) — sprite sheet generator, AI
-      parameters, sounds.
+- [x] Fourth enemy type: the Baron of Hell boss in the E1M4 arena — 64×80 sprite sheet,
+      claw and green plasma attacks, keeps closing in between throws, boss roar, HUD health
+      bar, drawn 25% taller than regular enemies.
 - [ ] A projectile weapon for the player (rocket launcher or plasma) with splash damage.
 - [ ] Secret areas and an items-collected percentage on the summary screens.
 - [ ] Per-level par times used by the rating instead of a flat 2 minutes.

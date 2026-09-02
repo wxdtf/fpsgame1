@@ -107,7 +107,14 @@ final class AudioManager {
             playSound(generateDemonBite())
         case .soldier:
             playSound(generateSoldierShot())
+        case .baron:
+            playSound(generateBaronAttack())
         }
+    }
+
+    /// Deep roar when a boss first notices the player
+    func playBossRoar() {
+        playSound(generateBossRoar())
     }
 
     func playLevelComplete() {
@@ -361,6 +368,41 @@ final class AudioManager {
             // Tail hiss (shell casing / air)
             let tail = Float.random(in: -0.15...0.15) * max(0, t / 0.1) * max(0, 1.0 - t / 0.3)
             return (crack + body * 0.5 + bodyH + echo * 0.3 + echoTone + thump + tail) * 0.45
+        }
+    }
+
+    private func generateBaronAttack() -> AVAudioPCMBuffer? {
+        let pitch = randomPitch()
+        return generateBuffer(duration: 0.55) { t in
+            let twoPi = Float.pi * 2
+            // Deep grunt as the arm swings
+            let gruntFreq: Float = 60 * pitch * (1.0 + t * 0.6)
+            let grunt = (sin(t * gruntFreq * twoPi) + sin(t * gruntFreq * 2 * twoPi) * 0.5) * max(0, 1.0 - t / 0.25) * 0.35
+            // Plasma launch: rising resonant hiss with crackle
+            let launchT = max(0, t - 0.12)
+            let sweep: Float = (200 + launchT * 900) * pitch
+            let hiss = Float.random(in: -1...1) * 0.3 * max(0, 1.0 - launchT / 0.35)
+            let tone = sin(launchT * sweep * twoPi) * 0.25 * max(0, 1.0 - launchT / 0.3)
+            let crackle = Float.random(in: -1...1) * (sin(launchT * 6000 * twoPi) > 0.8 ? 1.0 : 0.0) * 0.25 * max(0, 1.0 - launchT / 0.3)
+            let env = min(1.0, t / 0.02)
+            return (grunt + hiss + tone + crackle) * env * 0.5
+        }
+    }
+
+    private func generateBossRoar() -> AVAudioPCMBuffer? {
+        return generateBuffer(duration: 1.1) { t in
+            let twoPi = Float.pi * 2
+            // Pitch swells up over the first third, then sinks into a growl
+            let freq: Float = t < 0.35 ? 48 + t / 0.35 * 30 : max(40, 78 - (t - 0.35) * 40)
+            let h1 = sin(t * freq * twoPi)
+            let h2 = sin(t * freq * 2 * twoPi) * 0.6
+            let h3 = sin(t * freq * 3 * twoPi) * 0.4
+            let h5 = sin(t * freq * 5 * twoPi) * 0.2
+            // Throat rattle
+            let rattle = Float.random(in: -0.3...0.3) * (1.0 + sin(t * 18 * twoPi) * 0.6)
+            let attack = min(1.0, t / 0.08)
+            let decay = max(0, 1.0 - max(0, t - 0.6) / 0.5)
+            return (h1 + h2 + h3 + h5 + rattle) * attack * decay * 0.3
         }
     }
 

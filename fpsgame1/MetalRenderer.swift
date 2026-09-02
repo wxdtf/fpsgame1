@@ -527,10 +527,13 @@ final class MetalRenderer {
             guard dist < GameConstants.maxRenderDistance else { continue }
             let sheet = sprites.enemySprites(for: enemy.type)
             let frameIdx = min(enemy.spriteFrameOffset, sheet.frameCount - 1)
+            // Bigger enemies are raised so their feet stay on the floor line
+            let scale = enemy.type.spriteScale
             entries.append(SpriteEntry(x: enemy.x, y: enemy.y, dist: dist,
                                        pixels: sheet.frames[frameIdx],
                                        spriteW: sheet.width, spriteH: sheet.height,
-                                       vOffset: enemy.deathVOffset))
+                                       vOffset: enemy.deathVOffset + (1.0 - scale) / 2.0,
+                                       scale: scale))
         }
 
         for item in items where !item.isCollected {
@@ -550,7 +553,7 @@ final class MetalRenderer {
             let dx = proj.x - player.x, dy = proj.y - player.y
             let dist = sqrt(dx * dx + dy * dy)
             guard dist < GameConstants.maxRenderDistance else { continue }
-            let frameIdx = proj.type == .fireball ? 0 : 1
+            let frameIdx = proj.type.spriteFrame
             let sheet = sprites.projectileSprites
             entries.append(SpriteEntry(x: proj.x, y: proj.y, dist: dist,
                                        pixels: sheet.frames[frameIdx],
