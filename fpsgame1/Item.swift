@@ -12,6 +12,8 @@ enum ItemType {
     case ammoShells(amount: Int)
     case shotgunPickup
     case chaingunPickup
+    case rocketLauncherPickup
+    case ammoRockets(amount: Int)
     case keyCard(color: KeyColor)
     case berserkPack
     case intelData
@@ -57,6 +59,8 @@ struct Item: Identifiable {
         case .berserkPack: return 9
         case .intelData: return 10
         case .demonicArtifact: return 11
+        case .rocketLauncherPickup: return 12
+        case .ammoRockets: return 13
         }
     }
 }

@@ -24,9 +24,11 @@ final class SpriteAssets {
     let shotgunSprites: SpriteSheet
     let fistSprites: SpriteSheet
     let chaingunSprites: SpriteSheet
+    let rocketLauncherSprites: SpriteSheet
 
     let itemSprites: SpriteSheet
     let projectileSprites: SpriteSheet
+    let explosionSprites: SpriteSheet
 
     private init() {
         impSprites = Self.generateImpSprites()
@@ -37,8 +39,10 @@ final class SpriteAssets {
         shotgunSprites = Self.generateShotgunSprites()
         fistSprites = Self.generateFistSprites()
         chaingunSprites = Self.generateChaingunSprites()
+        rocketLauncherSprites = Self.generateRocketLauncherSprites()
         itemSprites = Self.generateItemSprites()
         projectileSprites = Self.generateProjectileSprites()
+        explosionSprites = Self.generateExplosionSprites()
     }
 
     func enemySprites(for type: EnemyType) -> SpriteSheet {
@@ -56,6 +60,7 @@ final class SpriteAssets {
         case .pistol: return pistolSprites
         case .shotgun: return shotgunSprites
         case .chaingun: return chaingunSprites
+        case .rocketLauncher: return rocketLauncherSprites
         }
     }
 
@@ -1728,6 +1733,75 @@ final class SpriteAssets {
         return SpriteSheet(frames: frames, width: w, height: h)
     }
 
+    // MARK: - Rocket Launcher Sprites (first person view)
+
+    private static func generateRocketLauncherSprites() -> SpriteSheet {
+        let w = 192, h = 192
+        var frames: [[UInt32]] = []
+
+        for frame in 0..<4 {
+            var px = [UInt32](repeating: T, count: w * h)
+            let tube = c(70, 72, 68)
+            let tubeDark = c(45, 47, 44)
+            let tubeLight = c(105, 108, 102)
+            let olive = c(85, 95, 60)
+            let oliveDark = c(60, 68, 42)
+            let steel = c(120, 122, 128)
+            let rocketRed = c(190, 40, 30)
+            let rocketBody = c(150, 150, 140)
+            let skin = c(195, 155, 125)
+            let skinDark = c(165, 130, 100)
+
+            // Frames: 0 idle, 1 launch, 2 smoke, 3 reloaded
+            let recoil = frame == 1 ? 12 : (frame == 2 ? 6 : 0)
+
+            // Shoulder rest / rear body
+            fillRect(&px, w: w, h: h, x: 62, y: 120 + recoil, rw: 68, rh: 60, color: olive)
+            fillRect(&px, w: w, h: h, x: 66, y: 124 + recoil, rw: 60, rh: 52, color: oliveDark)
+            // Main tube
+            fillRect(&px, w: w, h: h, x: 70, y: 28 + recoil, rw: 52, rh: 100, color: tube)
+            fillRect(&px, w: w, h: h, x: 70, y: 28 + recoil, rw: 6, rh: 100, color: tubeLight)
+            fillRect(&px, w: w, h: h, x: 116, y: 28 + recoil, rw: 6, rh: 100, color: tubeDark)
+            // Reinforcing bands
+            for by in [44, 78, 112] {
+                fillRect(&px, w: w, h: h, x: 68, y: by + recoil, rw: 56, rh: 6, color: steel)
+                fillRect(&px, w: w, h: h, x: 68, y: by + 6 + recoil, rw: 56, rh: 2, color: tubeDark)
+            }
+            // Muzzle opening
+            fillOval(&px, w: w, h: h, cx: 96, cy: 30 + recoil, rx: 26, ry: 10, color: tubeDark)
+            fillOval(&px, w: w, h: h, cx: 96, cy: 30 + recoil, rx: 20, ry: 7, color: c(20, 20, 22))
+            // Loaded rocket visible in the muzzle (not on the launch/smoke frames)
+            if frame == 0 || frame == 3 {
+                fillOval(&px, w: w, h: h, cx: 96, cy: 30 + recoil, rx: 10, ry: 4, color: rocketBody)
+                fillOval(&px, w: w, h: h, cx: 96, cy: 29 + recoil, rx: 5, ry: 2, color: rocketRed)
+            }
+            // Grip and hand
+            fillRect(&px, w: w, h: h, x: 124, y: 96 + recoil, rw: 14, rh: 40, color: oliveDark)
+            fillOval(&px, w: w, h: h, cx: 138, cy: 122 + recoil, rx: 22, ry: 14, color: skin)
+            fillOval(&px, w: w, h: h, cx: 140, cy: 126 + recoil, rx: 20, ry: 12, color: skinDark)
+            // Sight
+            fillRect(&px, w: w, h: h, x: 60, y: 60 + recoil, rw: 8, rh: 30, color: steel)
+            fillRect(&px, w: w, h: h, x: 58, y: 58 + recoil, rw: 12, rh: 4, color: tubeDark)
+
+            if frame == 1 {
+                // Launch flash
+                for r in stride(from: 30, to: 0, by: -3) {
+                    let t = Double(30 - r) / 30.0
+                    fillCircle(&px, w: w, h: h, cx: 96, cy: 22, r: r,
+                               color: c(Int(255.0 * t), Int(210.0 * t * t), Int(60.0 * t * t * t)))
+                }
+            } else if frame == 2 {
+                // Smoke puff
+                fillCircle(&px, w: w, h: h, cx: 92, cy: 22, r: 14, color: c(110, 110, 110))
+                fillCircle(&px, w: w, h: h, cx: 104, cy: 14, r: 10, color: c(140, 140, 140))
+            }
+
+            addOutline(&px, w: w, h: h, color: c(30, 30, 32))
+            frames.append(px)
+        }
+        return SpriteSheet(frames: frames, width: w, height: h)
+    }
+
     // MARK: - Item Sprites
 
     private static func generateItemSprites() -> SpriteSheet {
@@ -1861,6 +1935,64 @@ final class SpriteAssets {
         addOutline(&da, w: w, h: h, color: c(40, 10, 50))
         frames.append(da)
 
+        // Rocket launcher pickup (tube with a loaded rocket)
+        var rl = [UInt32](repeating: T, count: w * h)
+        fillRect(&rl, w: w, h: h, x: 1, y: 7, rw: 15, rh: 6, color: c(70, 72, 68))
+        fillRect(&rl, w: w, h: h, x: 1, y: 8, rw: 15, rh: 2, color: c(105, 108, 102))
+        fillRect(&rl, w: w, h: h, x: 5, y: 13, rw: 6, rh: 4, color: c(85, 95, 60))
+        fillOval(&rl, w: w, h: h, cx: 17, cy: 10, rx: 2, ry: 3, color: c(20, 20, 22))
+        fillRect(&rl, w: w, h: h, x: 16, y: 9, rw: 3, rh: 2, color: c(190, 40, 30))
+        addOutline(&rl, w: w, h: h, color: c(25, 25, 28))
+        frames.append(rl)
+
+        // Rocket box (crate with three rockets)
+        var rb = [UInt32](repeating: T, count: w * h)
+        fillRect(&rb, w: w, h: h, x: 2, y: 8, rw: 16, rh: 8, color: c(80, 90, 55))
+        fillRect(&rb, w: w, h: h, x: 3, y: 9, rw: 14, rh: 6, color: c(100, 110, 70))
+        for rx in stride(from: 4, to: 16, by: 4) {
+            fillRect(&rb, w: w, h: h, x: rx, y: 4, rw: 2, rh: 5, color: c(150, 150, 140))
+            fillRect(&rb, w: w, h: h, x: rx, y: 3, rw: 2, rh: 2, color: c(190, 40, 30))
+        }
+        addOutline(&rb, w: w, h: h, color: c(30, 35, 20))
+        frames.append(rb)
+
+        return SpriteSheet(frames: frames, width: w, height: h)
+    }
+
+    // MARK: - Explosion Sprites (rocket blast, 4 frames)
+
+    private static func generateExplosionSprites() -> SpriteSheet {
+        let w = 32, h = 32
+        var frames: [[UInt32]] = []
+
+        // Frame 0: white-hot flash
+        var f0 = [UInt32](repeating: T, count: w * h)
+        fillCircle(&f0, w: w, h: h, cx: 16, cy: 16, r: 7, color: c(255, 220, 120))
+        fillCircle(&f0, w: w, h: h, cx: 16, cy: 16, r: 4, color: c(255, 255, 230))
+        frames.append(f0)
+
+        // Frame 1: expanding fireball
+        var f1 = [UInt32](repeating: T, count: w * h)
+        fillCircle(&f1, w: w, h: h, cx: 16, cy: 16, r: 12, color: c(200, 60, 10))
+        fillCircle(&f1, w: w, h: h, cx: 16, cy: 16, r: 9, color: c(255, 140, 20))
+        fillCircle(&f1, w: w, h: h, cx: 15, cy: 15, r: 5, color: c(255, 240, 150))
+        frames.append(f1)
+
+        // Frame 2: full blast with a dark rim and hot spots
+        var f2 = [UInt32](repeating: T, count: w * h)
+        fillCircle(&f2, w: w, h: h, cx: 16, cy: 16, r: 15, color: c(90, 30, 10))
+        fillCircle(&f2, w: w, h: h, cx: 16, cy: 16, r: 12, color: c(220, 80, 15))
+        fillCircle(&f2, w: w, h: h, cx: 12, cy: 13, r: 5, color: c(255, 200, 80))
+        fillCircle(&f2, w: w, h: h, cx: 21, cy: 18, r: 4, color: c(255, 180, 60))
+        frames.append(f2)
+
+        // Frame 3: smoke
+        var f3 = [UInt32](repeating: T, count: w * h)
+        fillCircle(&f3, w: w, h: h, cx: 15, cy: 15, r: 14, color: c(70, 60, 55))
+        fillCircle(&f3, w: w, h: h, cx: 19, cy: 12, r: 8, color: c(95, 85, 80))
+        fillCircle(&f3, w: w, h: h, cx: 11, cy: 18, r: 6, color: c(55, 45, 42))
+        frames.append(f3)
+
         return SpriteSheet(frames: frames, width: w, height: h)
     }
 
@@ -1893,6 +2025,16 @@ final class SpriteAssets {
         fillCircle(&pl, w: w, h: h, cx: 8, cy: 8, r: 4, color: c(120, 255, 150))
         fillCircle(&pl, w: w, h: h, cx: 8, cy: 8, r: 2, color: c(220, 255, 230))
         frames.append(pl)
+
+        // Frame 3: Rocket — grey body, red nose, exhaust flame
+        var rk = [UInt32](repeating: T, count: w * h)
+        fillRect(&rk, w: w, h: h, x: 6, y: 3, rw: 4, rh: 8, color: c(150, 150, 140))
+        fillTriangle(&rk, w: w, h: h, x0: 6, y0: 3, x1: 10, y1: 3, x2: 8, y2: 0, color: c(190, 40, 30))
+        fillRect(&rk, w: w, h: h, x: 4, y: 9, rw: 2, rh: 3, color: c(90, 90, 85))
+        fillRect(&rk, w: w, h: h, x: 10, y: 9, rw: 2, rh: 3, color: c(90, 90, 85))
+        fillCircle(&rk, w: w, h: h, cx: 8, cy: 13, r: 3, color: c(255, 160, 30))
+        fillCircle(&rk, w: w, h: h, cx: 8, cy: 12, r: 1, color: c(255, 240, 160))
+        frames.append(rk)
 
         return SpriteSheet(frames: frames, width: w, height: h)
     }

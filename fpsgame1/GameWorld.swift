@@ -587,6 +587,9 @@ struct GameWorld {
                 (.armorVest(amount: 50), 24.5, 24.5),
                 (.healthPack(amount: 50), 28.5, 27.5),
                 (.ammoShells(amount: 12), 30.5, 30.5),
+                // Rocket launcher debuts in the final arena
+                (.rocketLauncherPickup, 25.5, 20.5),
+                (.ammoRockets(amount: 5), 27.5, 24.5),
             ],
             objective: .exterminate(.demon)
         )
@@ -701,10 +704,12 @@ struct GameWorld {
                 (.chaingunPickup, 2.5, 13.5),
                 (.ammoBullets(amount: 30), 7.5, 19.5),
                 (.armorVest(amount: 25), 2.5, 16.5),
+                (.rocketLauncherPickup, 6.5, 17.5),
                 // Hub
                 (.healthPack(amount: 50), 15.5, 13.5),
                 (.ammoShells(amount: 12), 10.5, 15.5),
                 (.ammoBullets(amount: 30), 19.5, 16.5),
+                (.ammoRockets(amount: 5), 12.5, 16.5),
                 // Containment — BLUE KEY in the vault
                 (.keyCard(color: .blue), 2.5, 2.5),
                 (.healthPack(amount: 50), 3.5, 3.5),
@@ -717,6 +722,7 @@ struct GameWorld {
                 (.healthPack(amount: 50), 21.5, 9.5),
                 (.ammoShells(amount: 12), 17.5, 6.5),
                 (.ammoBullets(amount: 30), 26.5, 6.5),
+                (.ammoRockets(amount: 5), 18.5, 5.5),
                 // Final arena
                 (.berserkPack, 22.5, 16.5),
                 (.healthPack(amount: 50), 24.5, 12.5),
@@ -724,6 +730,7 @@ struct GameWorld {
                 (.ammoShells(amount: 12), 22.5, 19.5),
                 (.ammoBullets(amount: 30), 30.5, 19.5),
                 (.healthPack(amount: 25), 29.5, 16.5),
+                (.ammoRockets(amount: 5), 28.5, 19.5),
             ],
             objective: .exterminateAll
         )

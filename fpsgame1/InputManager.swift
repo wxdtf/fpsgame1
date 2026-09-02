@@ -23,6 +23,7 @@ final class InputManager {
     static let key2: UInt16 = 19
     static let key3: UInt16 = 20
     static let key4: UInt16 = 21
+    static let key5: UInt16 = 23
     static let keyEscape: UInt16 = 53
     static let keyReturn: UInt16 = 36
     static let keyShift: UInt16 = 56
@@ -69,6 +70,7 @@ final class InputManager {
         else if keys.contains(Self.key2) { state.weaponSwitch = 2 }
         else if keys.contains(Self.key3) { state.weaponSwitch = 3 }
         else if keys.contains(Self.key4) { state.weaponSwitch = 4 }
+        else if keys.contains(Self.key5) { state.weaponSwitch = 5 }
 
         mouseDeltaX = 0
         mouseDeltaY = 0

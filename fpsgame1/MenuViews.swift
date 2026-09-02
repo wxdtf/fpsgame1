@@ -64,7 +64,7 @@ struct TitleScreenView: View {
                         controlHint("MOUSE / TRACKPAD", description: "Look around")
                         controlHint("SPACE / CLICK", description: "Shoot")
                         controlHint("E", description: "Open doors")
-                        controlHint("1 2 3 4", description: "Switch weapons")
+                        controlHint("1 - 5", description: "Switch weapons")
                         controlHint("SHIFT", description: "Sprint")
                         controlHint("ESC", description: "Pause")
                     }

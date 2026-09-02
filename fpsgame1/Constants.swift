@@ -41,6 +41,7 @@ enum GameConstants {
     // Ammo caps
     static let maxBullets = 200
     static let maxShells = 50
+    static let maxRockets = 50
 
     // Hazards
     /// Damage dealt on each tick while standing on a damage floor (nukage)

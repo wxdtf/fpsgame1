@@ -275,6 +275,7 @@ final class GameViewModel {
                 case .shotgun: audio.playShotgun()
                 case .fist: audio.playPunch()
                 case .chaingun: audio.playGunshot()
+                case .rocketLauncher: audio.playRocketLaunch()
                 }
             }
 
@@ -326,6 +327,11 @@ final class GameViewModel {
             // Enemy killed
             if engine.killCount > prevKills {
                 audio.playEnemyDeath()
+            }
+
+            // Rocket detonated
+            if engine.explosionThisFrame {
+                audio.playExplosion()
             }
 
             // Item pickup
@@ -404,6 +410,7 @@ final class GameViewModel {
                     enemies: engine.enemies,
                     items: engine.items,
                     projectiles: engine.projectiles,
+                    explosions: engine.explosions,
                     elapsedTime: engine.elapsedTime
                 )
                 activePixelBuffer = mr.pixelBuffer
@@ -414,6 +421,7 @@ final class GameViewModel {
                     enemies: engine.enemies,
                     items: engine.items,
                     projectiles: engine.projectiles,
+                    explosions: engine.explosions,
                     elapsedTime: engine.elapsedTime
                 )
                 activePixelBuffer = cr.pixelBuffer
@@ -521,6 +529,7 @@ final class GameViewModel {
         case .pistol: currentWeaponName = "PISTOL"
         case .shotgun: currentWeaponName = "SHOTGUN"
         case .chaingun: currentWeaponName = "CHAINGUN"
+        case .rocketLauncher: currentWeaponName = "LAUNCHER"
         }
 
         statusMessage = engine.statusMessageTimer > 0 ? engine.statusMessage : ""

@@ -10,11 +10,13 @@ enum WeaponType: Hashable, CaseIterable {
     case pistol
     case shotgun
     case chaingun
+    case rocketLauncher
 }
 
 enum AmmoType: Hashable {
     case bullets
     case shells
+    case rockets
 }
 
 enum KeyColor: Hashable {
@@ -32,6 +34,12 @@ struct WeaponDefinition {
     let range: Double
     let animationFrames: Int
     let frameDuration: Double
+    /// Projectile weapons launch a rocket instead of hitscanning
+    var isProjectile: Bool = false
+    var projectileSpeed: Double = 0
+    /// Blast damage at the centre of the explosion, falling off linearly to splashRadius
+    var splashDamage: Int = 0
+    var splashRadius: Double = 0
 
     static let fist = WeaponDefinition(
         type: .fist, damage: 10, fireRate: 0.4, ammoType: nil, ammoPerShot: 0,
@@ -53,12 +61,19 @@ struct WeaponDefinition {
         spread: 0.04, pellets: 1, range: 20, animationFrames: 3, frameDuration: 0.025
     )
 
+    static let rocketLauncher = WeaponDefinition(
+        type: .rocketLauncher, damage: 100, fireRate: 0.8, ammoType: .rockets, ammoPerShot: 1,
+        spread: 0, pellets: 1, range: 30, animationFrames: 4, frameDuration: 0.1,
+        isProjectile: true, projectileSpeed: 12, splashDamage: 80, splashRadius: 1.8
+    )
+
     static func forType(_ type: WeaponType) -> WeaponDefinition {
         switch type {
         case .fist: return .fist
         case .pistol: return .pistol
         case .shotgun: return .shotgun
         case .chaingun: return .chaingun
+        case .rocketLauncher: return .rocketLauncher
         }
     }
 }

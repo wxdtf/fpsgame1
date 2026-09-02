@@ -11,7 +11,7 @@ A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Me
 
 - **Raycasting Engine** — Classic DOOM-style rendering with textured walls, floors, and ceilings
 - **Metal Accelerated** — GPU-powered rendering for smooth performance
-- **Multiple Weapons** — Fist, Pistol, Shotgun, and Chaingun with unique fire rates and spread patterns
+- **Multiple Weapons** — Fist, Pistol, Shotgun, Chaingun, and a Rocket Launcher with splash damage
 - **Enemy AI** — Enemies wander, chase and attack with line-of-sight detection, hunt you through corridors and open doors using a tile navigation field, and flinch by pain chance
 - **Multi-Level Campaign** — Progressive levels with mission briefings, data-driven objectives, increasing difficulty and an end-of-campaign summary
 - **Interactive Doors** — Regular and color-keyed doors (Red, Blue, Yellow) requiring key pickups
@@ -29,7 +29,7 @@ A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Me
 | `Mouse / Trackpad` | Look around |
 | `Space / Click` | Shoot |
 | `E` | Open doors |
-| `1 2 3 4` | Switch weapons |
+| `1 2 3 4 5` | Switch weapons |
 | `Shift` | Sprint |
 | `Tab` | Toggle minimap |
 | `ESC` | Pause |
