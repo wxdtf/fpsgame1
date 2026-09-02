@@ -47,11 +47,12 @@ Found by reviewing the code and by running the new level validator:
       unlocked doors; doors no longer close on enemies; idle enemies wander; a per-type
       pain chance replaces the guaranteed flinch that let the chaingun stun-lock anything.
 - [x] Interaction ray no longer stops at nukage tiles, so doors behind a puddle open.
+- [x] **Pistol start**: the shotgun (and its shells) left the default loadout, so the shotgun
+      pickup in every level matters and a death restart is a real pistol start. Weapons
+      found still carry over between levels.
 
 ## Known issues & open questions
 
-- The player starts every level with a shotgun (`Player.weapons` default), which makes the
-  shotgun pickups redundant. Probably a leftover from testing; decide whether to keep it.
 - Level ratings: "NIGHTMARE" is awarded for 100% kills slower than 2 minutes and
   "ULTRA-VIOLENCE" for faster. Intentional?
 - `MetalRenderer` has a Metal 4 path that is disabled until the shaders are ported to
