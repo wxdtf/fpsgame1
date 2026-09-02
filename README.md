@@ -2,6 +2,7 @@
 
 A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Metal** on macOS.
 
+[![CI](https://github.com/wxdtf/fpsgame1/actions/workflows/ci.yml/badge.svg)](https://github.com/wxdtf/fpsgame1/actions/workflows/ci.yml)
 ![macOS](https://img.shields.io/badge/platform-macOS-blue)
 ![Swift](https://img.shields.io/badge/Swift-6.0-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -97,6 +98,14 @@ python3 tools/validate_levels.py --verbose
 
 It prints an ASCII map per level and fails (non-zero exit) if the exit, the objective, a
 key card or any enemy/item is unreachable from the start, honouring locked doors.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull request:
+
+- **Validate level data** (Ubuntu): runs `tools/validate_levels.py`.
+- **Build macOS app** (macOS runner): selects the newest installed Xcode (the Metal 4
+  code path needs the macOS 26 SDK) and builds the `fpsgame1` target unsigned.
 
 ### Roadmap
 

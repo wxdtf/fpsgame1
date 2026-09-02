@@ -15,7 +15,7 @@ place to look before starting new work; update it when a milestone lands.
 | UI / feedback | Title, briefing (typewriter), pause, death, level and campaign summary screens. HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, screen shake, muzzle flash, death camera. |
 | Audio | Fully procedural: 14 sound effects and one looping BGM track per level, generated at runtime with AVAudioEngine. |
 | Assets | None on disk. Every texture, sprite, face frame and sound is generated procedurally in Swift. |
-| Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). No unit tests, no CI yet. |
+| Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). GitHub Actions builds the app on a macOS runner and runs the validator on every push and PR. No unit tests yet. |
 
 ## Milestone 1 — Correctness & campaign completeness (done on this branch)
 
@@ -58,8 +58,6 @@ Found by reviewing the code and by running the new level validator:
 - `MetalRenderer` has a Metal 4 path that is disabled until the shaders are ported to
   argument tables; the Metal 3 path is what ships.
 - README requirements said macOS 14 but the project's deployment target is macOS 15.7.
-- No automated build: the level validator runs in CI-less isolation. A GitHub Actions
-  macOS job running `xcodebuild` and the validator would catch regressions.
 
 ## Milestone 2 — Content
 
@@ -83,7 +81,8 @@ Found by reviewing the code and by running the new level validator:
 - [ ] Unit-test target covering the Foundation-only engine files (`GameEngine`, `GameWorld`,
       `Enemy`, `Navigation`, `Player`, `Weapon`); the validator's reachability checks can
       move into it.
-- [ ] GitHub Actions workflow: build on a macOS runner and run the level validator.
+- [x] GitHub Actions workflow: build on a macOS runner and run the level validator
+      (`.github/workflows/ci.yml`).
 - [ ] Finish the Metal 4 path (argument tables) and move sprite compositing to the GPU.
 - [ ] Explore an iOS/iPadOS target (touch input, `UIImage` frame path).
 
