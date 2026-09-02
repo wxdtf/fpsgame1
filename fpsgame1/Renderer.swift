@@ -53,7 +53,7 @@ final class Renderer {
         zBuffer.deallocate()
     }
 
-    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], elapsedTime: Double = 0) {
+    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], explosions: [Explosion] = [], elapsedTime: Double = 0) {
         let buf = pixelBuffer.rawPixels
         let n = pixelBuffer.count
         for i in 0..<n { buf[i] = 0xFF000000 }
@@ -68,7 +68,7 @@ final class Renderer {
 
         renderFloorCeiling(player: player)
         renderWalls(player: player, world: world)
-        renderSprites(player: player, enemies: enemies, items: items, projectiles: projectiles)
+        renderSprites(player: player, enemies: enemies, items: items, projectiles: projectiles, explosions: explosions)
         renderWeapon(player: player)
     }
 
@@ -336,11 +336,13 @@ final class Renderer {
 
     // MARK: - Sprite Rendering
 
-    private func renderSprites(player: Player, enemies: [Enemy], items: [Item], projectiles: [Projectile]) {
+    private func renderSprites(player: Player, enemies: [Enemy], items: [Item], projectiles: [Projectile], explosions: [Explosion]) {
         struct SpriteEntry {
             var x: Double; var y: Double; var dist: Double
             var pixels: [UInt32]; var spriteW: Int; var spriteH: Int; var vOffset: Double
             var scale: Double = 1.0
+            /// Self-lit sprites (projectiles, explosions) ignore distance shading but keep fog
+            var fullBright: Bool = false
         }
 
         var entries: [SpriteEntry] = []
@@ -382,7 +384,20 @@ final class Renderer {
             entries.append(SpriteEntry(x: proj.x, y: proj.y, dist: dist,
                                        pixels: sheet.frames[frameIdx],
                                        spriteW: sheet.width, spriteH: sheet.height,
-                                       vOffset: 0.15, scale: 0.3))
+                                       vOffset: 0.15, scale: 0.3, fullBright: true))
+        }
+
+        // Explosions
+        for explosion in explosions {
+            let dx = explosion.x - player.x, dy = explosion.y - player.y
+            let dist = sqrt(dx * dx + dy * dy)
+            guard dist < GameConstants.maxRenderDistance else { continue }
+            let sheet = sprites.explosionSprites
+            let frameIdx = min(sheet.frameCount - 1, Int(explosion.progress * Double(sheet.frameCount)))
+            entries.append(SpriteEntry(x: explosion.x, y: explosion.y, dist: dist,
+                                       pixels: sheet.frames[frameIdx],
+                                       spriteW: sheet.width, spriteH: sheet.height,
+                                       vOffset: 0.05, scale: 1.2, fullBright: true))
         }
 
         entries.sort { $0.dist > $1.dist }
@@ -413,7 +428,7 @@ final class Renderer {
             let l = Renderer.getLUT(entry.dist)
             let baseShade = max(0.15, 1.0 / (1.0 + 0.15 * entry.dist * entry.dist))
             let tb = torchLight(worldX: entry.x, worldY: entry.y)
-            let shade = min(1.0, baseShade + tb * 0.35)
+            let shade = entry.fullBright ? 1.0 : min(1.0, baseShade + tb * 0.35)
             let fog = l.fog
             let leftX = screenX - sW / 2
             let topY = halfH - sH / 2 + vOff

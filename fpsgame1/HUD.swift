@@ -166,6 +166,9 @@ struct HUDView: View {
                     Text("4")
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundColor(viewModel.currentWeaponName == "CHAINGUN" ? .yellow : .gray)
+                    Text("5")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(viewModel.currentWeaponName == "LAUNCHER" ? .yellow : .gray)
                 }
 
                 // Key indicators

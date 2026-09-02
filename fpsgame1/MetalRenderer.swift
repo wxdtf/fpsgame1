@@ -268,7 +268,7 @@ final class MetalRenderer {
 
     // MARK: - Render Frame
 
-    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], elapsedTime: Double = 0) {
+    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], explosions: [Explosion] = [], elapsedTime: Double = 0) {
         currentTime = elapsedTime
 
         // Animate exit portal texture and update GPU atlas
@@ -326,7 +326,7 @@ final class MetalRenderer {
         memcpy(zBuffer, gpuZPtr, width * MemoryLayout<Float>.size)
 
         // CPU passes: sprites + weapon overlay
-        renderSprites(player: player, enemies: enemies, items: items, projectiles: projectiles)
+        renderSprites(player: player, enemies: enemies, items: items, projectiles: projectiles, explosions: explosions)
         renderWeapon(player: player)
     }
 
@@ -512,11 +512,13 @@ final class MetalRenderer {
 
     // MARK: - Sprite Rendering (CPU — same logic as original Renderer)
 
-    private func renderSprites(player: Player, enemies: [Enemy], items: [Item], projectiles: [Projectile]) {
+    private func renderSprites(player: Player, enemies: [Enemy], items: [Item], projectiles: [Projectile], explosions: [Explosion]) {
         struct SpriteEntry {
             var x: Double; var y: Double; var dist: Double
             var pixels: [UInt32]; var spriteW: Int; var spriteH: Int; var vOffset: Double
             var scale: Double = 1.0
+            /// Self-lit sprites (projectiles, explosions) ignore distance shading but keep fog
+            var fullBright: Bool = false
         }
 
         var entries: [SpriteEntry] = []
@@ -558,7 +560,20 @@ final class MetalRenderer {
             entries.append(SpriteEntry(x: proj.x, y: proj.y, dist: dist,
                                        pixels: sheet.frames[frameIdx],
                                        spriteW: sheet.width, spriteH: sheet.height,
-                                       vOffset: 0.15, scale: 0.3))
+                                       vOffset: 0.15, scale: 0.3, fullBright: true))
+        }
+
+        // Explosions
+        for explosion in explosions {
+            let dx = explosion.x - player.x, dy = explosion.y - player.y
+            let dist = sqrt(dx * dx + dy * dy)
+            guard dist < GameConstants.maxRenderDistance else { continue }
+            let sheet = sprites.explosionSprites
+            let frameIdx = min(sheet.frameCount - 1, Int(explosion.progress * Double(sheet.frameCount)))
+            entries.append(SpriteEntry(x: explosion.x, y: explosion.y, dist: dist,
+                                       pixels: sheet.frames[frameIdx],
+                                       spriteW: sheet.width, spriteH: sheet.height,
+                                       vOffset: 0.05, scale: 1.2, fullBright: true))
         }
 
         entries.sort { $0.dist > $1.dist }
@@ -592,7 +607,7 @@ final class MetalRenderer {
             let density = 0.08
             let fog = max(0.0, min(1.0, exp(-density * dist * dist)))
             let tb = spriteTorchLight(worldX: entry.x, worldY: entry.y)
-            let shade = min(1.0, baseShade + tb * 0.35)
+            let shade = entry.fullBright ? 1.0 : min(1.0, baseShade + tb * 0.35)
 
             let leftX = screenX - sW / 2
             let topY = halfH - sH / 2 + vOff

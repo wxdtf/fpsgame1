@@ -67,6 +67,14 @@ final class AudioManager {
         playSound(generatePunch())
     }
 
+    func playRocketLaunch() {
+        playSound(generateRocketLaunch())
+    }
+
+    func playExplosion() {
+        playSound(generateExplosion())
+    }
+
     func playPickup() {
         playSound(generatePickup())
     }
@@ -368,6 +376,38 @@ final class AudioManager {
             // Tail hiss (shell casing / air)
             let tail = Float.random(in: -0.15...0.15) * max(0, t / 0.1) * max(0, 1.0 - t / 0.3)
             return (crack + body * 0.5 + bodyH + echo * 0.3 + echoTone + thump + tail) * 0.45
+        }
+    }
+
+    private func generateRocketLaunch() -> AVAudioPCMBuffer? {
+        let pitch = randomPitch()
+        return generateBuffer(duration: 0.5) { t in
+            let twoPi = Float.pi * 2
+            // Ignition thump
+            let thump = sin(t * 70 * pitch * twoPi) * max(0, 1.0 - t / 0.12) * 0.6
+            // Exhaust roar fading as the rocket flies away
+            let roar = Float.random(in: -1...1) * max(0, 1.0 - t / 0.5) * 0.35
+            // Whistle dropping in pitch
+            let whistleFreq: Float = (900 - t * 800) * pitch
+            let whistle = sin(t * whistleFreq * twoPi) * max(0, 1.0 - t / 0.4) * 0.12
+            let env = min(1.0, t / 0.01)
+            return (thump + roar + whistle) * env * 0.5
+        }
+    }
+
+    private func generateExplosion() -> AVAudioPCMBuffer? {
+        let pitch = randomPitch()
+        return generateBuffer(duration: 0.8) { t in
+            let twoPi = Float.pi * 2
+            // Initial crack
+            let crack = Float.random(in: -1...1) * max(0, 1.0 - t / 0.03) * 0.9
+            // Low boom sweeping down
+            let boomFreq: Float = (120 - t * 100) * pitch
+            let boom = sin(t * max(30, boomFreq) * twoPi) * max(0, 1.0 - t / 0.5) * 0.7
+            // Rumbling debris tail
+            let rumble = Float.random(in: -1...1) * max(0, 1.0 - t / 0.8) * 0.3 * (0.6 + 0.4 * sin(t * 30 * twoPi))
+            let env = min(1.0, t / 0.005)
+            return (crack + boom + rumble) * env * 0.55
         }
     }
 

@@ -19,6 +19,7 @@ enum ProjectileType {
     case fireball  // Imp — slow, glowing orange
     case bullet    // Soldier — fast, bright tracer
     case plasma    // Baron — green hellfire
+    case rocket    // Player — rocket launcher
 
     /// Frame in the projectile sprite sheet
     var spriteFrame: Int {
@@ -26,6 +27,7 @@ enum ProjectileType {
         case .fireball: return 0
         case .bullet: return 1
         case .plasma: return 2
+        case .rocket: return 3
         }
     }
 }
@@ -47,6 +49,18 @@ struct Projectile {
     var isEnemy: Bool
     var lifetime: Double = 3.0
     var type: ProjectileType = .fireball
+    /// Blast dealt on impact by player rockets (0 for enemy shots)
+    var splashDamage: Int = 0
+    var splashRadius: Double = 0
+}
+
+/// Short-lived blast sprite left by a rocket
+struct Explosion {
+    var x: Double
+    var y: Double
+    var timer: Double = 0
+    let duration: Double = 0.45
+    var progress: Double { min(1.0, timer / duration) }
 }
 
 /// Score card for one finished level, kept for the end-of-campaign summary
@@ -65,6 +79,7 @@ final class GameEngine {
     var enemies: [Enemy]
     var items: [Item]
     var projectiles: [Projectile] = []
+    var explosions: [Explosion] = []
     /// Static data of the loaded level: layout, spawns and mission objective
     private(set) var levelData: GameWorld.LevelData
     /// Tile-distance field from the player, rebuilt every frame for enemy pathfinding
@@ -102,6 +117,8 @@ final class GameEngine {
     var bossAlertedThisFrame: Bool = false
     var enemyHurtThisFrame: Bool = false
     var enemyAttackedThisFrame: EnemyType? = nil
+    /// A rocket detonated this frame (plays the explosion)
+    var explosionThisFrame: Bool = false
 
     init() {
         let data = GameWorld.levelData(for: 1)
@@ -164,6 +181,7 @@ final class GameEngine {
         enemies = []
         items = []
         projectiles = []
+        explosions = []
         killCount = 0
         elapsedTime = 0
         damageFlashTimer = 0
@@ -204,6 +222,7 @@ final class GameEngine {
         bossAlertedThisFrame = false
         enemyHurtThisFrame = false
         enemyAttackedThisFrame = nil
+        explosionThisFrame = false
         spawnInvincibilityTimer = max(0, spawnInvincibilityTimer - deltaTime)
 
         // Player movement
@@ -223,7 +242,7 @@ final class GameEngine {
 
         // Weapon switch
         if let switchTo = input.weaponSwitch {
-            let types: [WeaponType] = [.fist, .pistol, .shotgun, .chaingun]
+            let types: [WeaponType] = [.fist, .pistol, .shotgun, .chaingun, .rocketLauncher]
             if switchTo >= 1 && switchTo <= types.count {
                 player.switchWeapon(to: types[switchTo - 1])
             }
@@ -323,6 +342,12 @@ final class GameEngine {
         // Update projectiles
         updateProjectiles(deltaTime: deltaTime)
 
+        // Explosion animations
+        for i in explosions.indices {
+            explosions[i].timer += deltaTime
+        }
+        explosions.removeAll(where: { $0.timer >= $0.duration })
+
         // Update items
         for i in items.indices {
             items[i].update(deltaTime: deltaTime)
@@ -413,6 +438,25 @@ final class GameEngine {
             screenShakeTimer = 0.15
         }
 
+        // Projectile weapons launch a rocket instead of hitscanning
+        if def.isProjectile {
+            projectiles.append(Projectile(
+                x: player.x + player.dirX * 0.6,
+                y: player.y + player.dirY * 0.6,
+                dirX: player.dirX, dirY: player.dirY,
+                speed: def.projectileSpeed,
+                damage: def.damage,
+                isEnemy: false,
+                type: .rocket,
+                splashDamage: def.splashDamage,
+                splashRadius: def.splashRadius
+            ))
+            screenShakeIntensity = max(screenShakeIntensity, 0.3)
+            screenShakeTimer = 0.15
+            alertNearbyEnemies(x: player.x, y: player.y, radius: 15)
+            return
+        }
+
         // Berserk multiplier for fist
         let damageMult = (player.isBerserk && def.type == .fist) ? 10 : 1
 
@@ -424,31 +468,84 @@ final class GameEngine {
             let rayDirY = sin(rayAngle)
 
             if let (enemyIdx, _) = castAttackRay(fromX: player.x, fromY: player.y, dirX: rayDirX, dirY: rayDirY, range: def.range) {
-                let wasAlive = enemies[enemyIdx].isAlive
-                let wasDormant = isDormant(enemies[enemyIdx])
-                enemies[enemyIdx].takeDamage(def.damage * damageMult)
+                damageEnemy(at: enemyIdx, amount: def.damage * damageMult)
                 hitMarkerTimer = 0.15
-                if wasDormant && enemies[enemyIdx].type.isBoss && !isDormant(enemies[enemyIdx]) {
-                    bossAlertedThisFrame = true
-                }
-                if wasAlive && enemies[enemyIdx].health <= 0 {
-                    killCount += 1
-                    // 30% chance to drop health or ammo
-                    if Double.random(in: 0...1) < 0.3 {
-                        let dropType: ItemType = Bool.random() ?
-                            .healthPack(amount: 10) : .ammoBullets(amount: 10)
-                        items.append(Item(type: dropType, x: enemies[enemyIdx].x, y: enemies[enemyIdx].y))
-                    }
-                } else if wasAlive && enemies[enemyIdx].health > 0 {
-                    enemyHurtThisFrame = true
-                }
-                // Alert nearby enemies
-                alertNearbyEnemies(x: enemies[enemyIdx].x, y: enemies[enemyIdx].y, radius: 10)
             }
         }
 
         // Gunshot alerts nearby enemies
         alertNearbyEnemies(x: player.x, y: player.y, radius: 15)
+    }
+
+    /// Apply player-inflicted damage to an enemy: kill count, drops, pain sound, boss roar and alerts
+    private func damageEnemy(at index: Int, amount: Int) {
+        let wasAlive = enemies[index].isAlive
+        let wasDormant = isDormant(enemies[index])
+        enemies[index].takeDamage(amount)
+        if wasDormant && enemies[index].type.isBoss && !isDormant(enemies[index]) {
+            bossAlertedThisFrame = true
+        }
+        if wasAlive && enemies[index].health <= 0 {
+            killCount += 1
+            // 30% chance to drop health or ammo
+            if Double.random(in: 0...1) < 0.3 {
+                let dropType: ItemType = Bool.random() ?
+                    .healthPack(amount: 10) : .ammoBullets(amount: 10)
+                items.append(Item(type: dropType, x: enemies[index].x, y: enemies[index].y))
+            }
+        } else if wasAlive && enemies[index].health > 0 {
+            enemyHurtThisFrame = true
+        }
+        // Alert nearby enemies
+        alertNearbyEnemies(x: enemies[index].x, y: enemies[index].y, radius: 10)
+    }
+
+    /// Detonate a rocket: direct-hit damage, blast damage that falls off with distance (never
+    /// through walls), half-strength blast on the player, screen shake and a blast sprite.
+    private func explode(x: Double, y: Double, splashDamage: Int, splashRadius: Double,
+                         directHit: Int? = nil, directDamage: Int = 0) {
+        explosions.append(Explosion(x: x, y: y))
+        explosionThisFrame = true
+
+        if let index = directHit {
+            damageEnemy(at: index, amount: directDamage)
+            hitMarkerTimer = 0.15
+        }
+
+        if splashRadius > 0 {
+            for i in enemies.indices where enemies[i].isAlive {
+                let dx = enemies[i].x - x
+                let dy = enemies[i].y - y
+                let dist = sqrt(dx * dx + dy * dy)
+                guard dist < splashRadius else { continue }
+                guard isLineOfSightClear(fromX: x, fromY: y, toX: enemies[i].x, toY: enemies[i].y) else { continue }
+                let blast = Int(Double(splashDamage) * (1.0 - dist / splashRadius))
+                if blast > 0 {
+                    damageEnemy(at: i, amount: blast)
+                    hitMarkerTimer = 0.15
+                }
+            }
+
+            // The player is not immune to their own rockets
+            let pdx = player.x - x
+            let pdy = player.y - y
+            let pdist = sqrt(pdx * pdx + pdy * pdy)
+            if pdist < splashRadius && isLineOfSightClear(fromX: x, fromY: y, toX: player.x, toY: player.y) {
+                let blast = Int(Double(splashDamage) * (1.0 - pdist / splashRadius) * 0.5)
+                if blast > 0 {
+                    player.takeDamage(blast)
+                    damageFlashTimer = 0.3
+                    lastDamageDirection = atan2(y - player.y, x - player.x)
+                }
+            }
+
+            // Shake harder the closer the blast
+            let shake = max(0.0, 1.0 - pdist / 8.0)
+            if shake > screenShakeIntensity {
+                screenShakeIntensity = shake
+                screenShakeTimer = 0.35
+            }
+        }
     }
 
     private func castAttackRay(fromX: Double, fromY: Double, dirX: Double, dirY: Double, range: Double) -> (Int, Double)? {
@@ -708,6 +805,8 @@ final class GameEngine {
         projectiles.removeAll(where: { $0.lifetime <= 0 })
 
         for i in projectiles.indices {
+            let prevX = projectiles[i].x
+            let prevY = projectiles[i].y
             projectiles[i].x += projectiles[i].dirX * projectiles[i].speed * deltaTime
             projectiles[i].y += projectiles[i].dirY * projectiles[i].speed * deltaTime
             projectiles[i].lifetime -= deltaTime
@@ -715,20 +814,42 @@ final class GameEngine {
             let tileX = Int(projectiles[i].x)
             let tileY = Int(projectiles[i].y)
             if world.isSolid(x: tileX, y: tileY) {
+                if !projectiles[i].isEnemy {
+                    // Rockets blow up on the wall, centred just in front of it
+                    explode(x: prevX, y: prevY,
+                            splashDamage: projectiles[i].splashDamage,
+                            splashRadius: projectiles[i].splashRadius)
+                }
                 projectiles[i].lifetime = 0
                 continue
             }
 
-            if projectiles[i].isEnemy && spawnInvincibilityTimer <= 0 {
-                let dx = projectiles[i].x - player.x
-                let dy = projectiles[i].y - player.y
-                if sqrt(dx * dx + dy * dy) < 0.5 {
-                    player.takeDamage(projectiles[i].damage)
-                    damageFlashTimer = 0.3
-                    lastDamageDirection = atan2(dy, dx)
-                    screenShakeIntensity = min(1.0, Double(projectiles[i].damage) / 30.0)
-                    screenShakeTimer = 0.3
-                    projectiles[i].lifetime = 0
+            if projectiles[i].isEnemy {
+                if spawnInvincibilityTimer <= 0 {
+                    let dx = projectiles[i].x - player.x
+                    let dy = projectiles[i].y - player.y
+                    if sqrt(dx * dx + dy * dy) < 0.5 {
+                        player.takeDamage(projectiles[i].damage)
+                        damageFlashTimer = 0.3
+                        lastDamageDirection = atan2(dy, dx)
+                        screenShakeIntensity = min(1.0, Double(projectiles[i].damage) / 30.0)
+                        screenShakeTimer = 0.3
+                        projectiles[i].lifetime = 0
+                    }
+                }
+            } else {
+                // Player rocket: detonate on the first living enemy it touches
+                for j in enemies.indices where enemies[j].isAlive {
+                    let dx = enemies[j].x - projectiles[i].x
+                    let dy = enemies[j].y - projectiles[i].y
+                    if sqrt(dx * dx + dy * dy) < enemies[j].type.hitRadius + 0.2 {
+                        explode(x: projectiles[i].x, y: projectiles[i].y,
+                                splashDamage: projectiles[i].splashDamage,
+                                splashRadius: projectiles[i].splashRadius,
+                                directHit: j, directDamage: projectiles[i].damage)
+                        projectiles[i].lifetime = 0
+                        break
+                    }
                 }
             }
         }
@@ -781,6 +902,19 @@ final class GameEngine {
                 player.switchWeapon(to: .chaingun)
                 picked = true
                 message = "PICKED UP A CHAINGUN!"
+            case .rocketLauncherPickup:
+                player.weapons.insert(.rocketLauncher)
+                player.ammo[.rockets] = min(GameConstants.maxRockets, player.ammo[.rockets, default: 0] + 2)
+                player.switchWeapon(to: .rocketLauncher)
+                picked = true
+                message = "PICKED UP A ROCKET LAUNCHER!"
+            case .ammoRockets(let amount):
+                let cap = GameConstants.maxRockets
+                let current = player.ammo[.rockets, default: 0]
+                guard current < cap else { continue }
+                player.ammo[.rockets] = min(cap, current + amount)
+                picked = true
+                message = "PICKED UP ROCKETS"
             case .keyCard(let color):
                 player.keys.insert(color)
                 picked = true

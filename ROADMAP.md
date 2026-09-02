@@ -8,7 +8,7 @@ place to look before starting new work; update it when a milestone lands.
 | Area | State |
 |------|-------|
 | Rendering | Complete. Metal 3 compute raycaster (walls, floor, ceiling, fog, torch light, sliding doors, animated exit portal) with a multi-core CPU fallback. Sprites, projectiles and the weapon overlay are composited on the CPU with z-buffer occlusion. |
-| Player | Movement with wall sliding and unstick, sprint, view bob, armor absorption, berserk, keys, 4 weapons (fist, pistol, shotgun, chaingun) with switch/fire animations. |
+| Player | Movement with wall sliding and unstick, sprint, view bob, armor absorption, berserk, keys, 5 weapons (fist, pistol, shotgun, chaingun, rocket launcher with splash damage) with switch/fire animations. |
 | Enemies | 4 types (imp, soldier, demon, and the Baron of Hell boss). State machine: idle → patrol → chase → attack → hurt → dying → dead. Line-of-sight detection, projectile and melee attacks, tile-based pathfinding when out of sight, door opening, pain chance, wandering patrols. Bosses claw up close, throw plasma at range, keep advancing between attacks and show a HUD health bar. |
 | World | 32×32 tile maps, 11 tile types, regular + colour-locked doors with auto-close, damage floors (nukage), exit portal, per-level difficulty scaling. |
 | Campaign | 4 levels with briefings, data-driven mission objectives (item retrieval / extermination), level summary with rating, campaign summary, death restarts the current level. |
@@ -67,7 +67,9 @@ Found by reviewing the code and by running the new level validator:
 - [x] Fourth enemy type: the Baron of Hell boss in the E1M4 arena — 64×80 sprite sheet,
       claw and green plasma attacks, keeps closing in between throws, boss roar, HUD health
       bar, drawn 25% taller than regular enemies.
-- [ ] A projectile weapon for the player (rocket launcher or plasma) with splash damage.
+- [x] Rocket launcher: slot 5, 100 direct + 80 blast damage falling off over 1.8 tiles (never
+      through walls, half strength on the player), explosion sprites and sounds, pickups in
+      the E1M3 arena and the E1M4 armory, rocket boxes in E1M3 and E1M4.
 - [ ] Secret areas and an items-collected percentage on the summary screens.
 - [ ] Per-level par times used by the rating instead of a flat 2 minutes.
 
