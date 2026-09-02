@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Run level validator
         run: python3 tools/validate_levels.py --verbose
@@ -29,7 +29,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Select newest Xcode
         # MetalRenderer uses the Metal 4 API from the macOS 26 SDK, so the
@@ -51,7 +51,6 @@ jobs:
             -project fpsgame1.xcodeproj \
             -target fpsgame1 \
             -configuration Debug \
-            -derivedDataPath build \
             -quiet \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
