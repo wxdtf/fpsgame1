@@ -84,7 +84,8 @@ fpsgame1/
 ├── Constants.swift        # Game configuration values
 └── GameView.swift         # Game rendering view
 tools/
-└── validate_levels.py     # Static checker for level data (reachability, keys, placement)
+├── validate_levels.py     # Static checker for level data (reachability, keys, placement)
+└── verify_local.sh        # Post-merge verification on a Mac: sync, validate, build, launch
 ```
 
 ## Development
@@ -100,6 +101,22 @@ python3 tools/validate_levels.py --verbose
 
 It prints an ASCII map per level and fails (non-zero exit) if the exit, the objective, a
 key card or any enemy/item is unreachable from the start, honouring locked doors.
+
+### Post-merge verification on your Mac
+
+CI only compiles. To play-test what was just merged, run the verification script from
+any clone of the repo:
+
+```bash
+tools/verify_local.sh
+```
+
+It makes the clone identical to `origin/main` (uncommitted changes go into a stash and
+unpushed commits onto a `backup/local-<timestamp>` branch first), validates the levels,
+builds with the newest installed Xcode (a newer Xcode-beta wins), and opens the app with a
+play-test checklist. `--no-launch` runs an 8-second start-up smoke test instead of opening
+the app, `--no-sync` keeps your working tree, and `XCODE_APP=/Applications/Xcode-beta.app`
+forces a specific Xcode.
 
 ### Continuous integration
 
