@@ -22,7 +22,11 @@ final class DoomFace {
     // 32-36: Idle eye left × 5 health levels
     // 37-41: Idle eye right × 5 health levels
 
-    init() {
+    /// Features that make this portrait belong to one particular marine
+    let look: FaceLook
+
+    init(look: FaceLook = .standard) {
+        self.look = look
         generateAllFrames()
     }
 
@@ -132,8 +136,13 @@ final class DoomFace {
         // 1. Face shape (oval)
         drawFaceShape(&px, skin: skinColor, darkerSkin: darkerSkin, shadow: shadowSkin)
 
+        // 1b. Character features on the skin
+        drawStubble(&px, darkerSkin: darkerSkin)
+        drawScar(&px)
+
         // 2. Hair
         drawHair(&px, healthLevel: healthLevel)
+        drawHeadband(&px)
 
         // 3. Eyes
         let eyeLook: Int
@@ -167,13 +176,63 @@ final class DoomFace {
     // MARK: - Skin Color
 
     private func skinColorForHealth(_ level: Int) -> UInt32 {
-        // Warm peach at full health → pale green at near-death
-        switch level {
-        case 0: return makeColor(r: 220, g: 180, b: 140)  // Healthy peach
-        case 1: return makeColor(r: 210, g: 170, b: 130)  // Slightly paler
-        case 2: return makeColor(r: 195, g: 165, b: 130)  // Noticeably pale
-        case 3: return makeColor(r: 175, g: 170, b: 130)  // Sickly yellow
-        default: return makeColor(r: 150, g: 170, b: 140) // Pale green (dead)
+        // The marine's own skin at full health, fading toward pale green near death
+        let t = Double(max(0, min(4, level))) / 4.0
+        let r = Double(look.skin.r) * (1.0 - t) + 150.0 * t
+        let g = Double(look.skin.g) * (1.0 - t) + 170.0 * t
+        let b = Double(look.skin.b) * (1.0 - t) + 140.0 * t
+        return makeColor(r: UInt8(clamping: Int(r)), g: UInt8(clamping: Int(g)), b: UInt8(clamping: Int(b)))
+    }
+
+    private func rgbColor(_ rgb: RGB) -> UInt32 {
+        makeColor(r: UInt8(clamping: rgb.r), g: UInt8(clamping: rgb.g), b: UInt8(clamping: rgb.b))
+    }
+
+    // MARK: - Character Features
+
+    /// Five o'clock shadow along the jaw
+    private func drawStubble(_ px: inout [UInt32], darkerSkin: UInt32) {
+        guard look.stubble else { return }
+        let stubbleColor = darkenColor(darkerSkin, factor: 0.75)
+        let cy = size / 2 + 1
+        for y in (cy + 6)..<(cy + 17) {
+            guard y < size else { continue }
+            for x in 8..<(size - 8) {
+                guard (px[y * size + x] >> 24) != 0 else { continue }
+                if (x * 7 + y * 3) % 5 == 0 {
+                    px[y * size + x] = stubbleColor
+                }
+            }
+        }
+    }
+
+    /// Old diagonal cut across the right cheek
+    private func drawScar(_ px: inout [UInt32]) {
+        guard look.scar else { return }
+        let scarColor = makeColor(r: 175, g: 105, b: 95)
+        let scarLight = makeColor(r: 205, g: 140, b: 130)
+        let points = [(32, 23), (33, 24), (33, 25), (34, 26), (34, 27), (35, 28), (35, 29), (36, 30), (36, 31)]
+        for (x, y) in points {
+            guard x >= 0 && x + 1 < size && y >= 0 && y < size else { continue }
+            px[y * size + x] = scarColor
+            px[y * size + x + 1] = scarLight
+        }
+    }
+
+    /// Coloured band across the forehead, just under the hairline
+    private func drawHeadband(_ px: inout [UInt32]) {
+        guard let band = look.headband else { return }
+        let bandColor = rgbColor(band)
+        let bandDark = darkenColor(bandColor, factor: 0.7)
+        let cx = size / 2
+        let cy = size / 2 + 1
+        for y in 12...14 {
+            for x in (cx - 15)...(cx + 15) {
+                let dx = Double(x - cx) / 19.0
+                let dy = Double(y - cy) / 21.0
+                guard dx * dx + dy * dy < 1.0 else { continue }
+                px[y * size + x] = (y == 14) ? bandDark : bandColor
+            }
         }
     }
 
@@ -212,34 +271,43 @@ final class DoomFace {
     // MARK: - Hair
 
     private func drawHair(_ px: inout [UInt32], healthLevel: Int) {
-        let hairDark = makeColor(r: 60, g: 40, b: 25)
-        let hairLight = makeColor(r: 85, g: 55, b: 35)
+        guard look.hairStyle != .bald else { return }
+        let hairDark = rgbColor(look.hair)
+        let hairLight = rgbColor(look.hairLight)
 
         let cx = size / 2
         let rx = 19
         let messiness = healthLevel // More disheveled at lower health
 
-        for y in 2..<14 {
+        for y in 0..<14 {
             for x in 5..<(size - 5) {
-                let dx = Double(x - cx) / Double(rx)
-                let dy = Double(y - 7) / 14.0
-                let d = dx * dx + dy * dy
+                let covered: Bool
+                if look.hairStyle == .mohawk {
+                    // Narrow strip standing straight up from the crown
+                    covered = abs(x - cx) <= 3 && y < 12
+                } else if y >= 2 {
+                    let dx = Double(x - cx) / Double(rx)
+                    let dy = Double(y - 7) / 14.0
+                    let d = dx * dx + dy * dy
+                    // Hair follows top of head curve
+                    let headEdge = 1.0 - Double(y - 2) * 0.06
+                    covered = d < headEdge && y < 12 - (abs(x - cx) > 12 ? 2 : 0)
+                } else {
+                    covered = false
+                }
+                guard covered else { continue }
 
-                // Hair follows top of head curve
-                let headEdge = 1.0 - Double(y - 2) * 0.06
-                if d < headEdge && y < 12 - (abs(x - cx) > 12 ? 2 : 0) {
-                    // Add some texture variation
-                    let isLight = (x + y * 3) % (4 + messiness) == 0
-                    px[y * size + x] = isLight ? hairLight : hairDark
+                // Add some texture variation
+                let isLight = (x + y * 3) % (4 + messiness) == 0
+                px[y * size + x] = isLight ? hairLight : hairDark
 
-                    // Messy strands at low health
-                    if messiness >= 2 && y > 9 && (x % (5 - min(messiness, 3))) == 0 {
-                        if y + 1 < size {
-                            px[(y + 1) * size + x] = hairDark
-                        }
-                        if messiness >= 3 && y + 2 < size {
-                            px[(y + 2) * size + x] = hairDark
-                        }
+                // Messy strands at low health
+                if messiness >= 2 && y > 9 && (x % (5 - min(messiness, 3))) == 0 {
+                    if y + 1 < size {
+                        px[(y + 1) * size + x] = hairDark
+                    }
+                    if messiness >= 3 && y + 2 < size {
+                        px[(y + 2) * size + x] = hairDark
                     }
                 }
             }
@@ -250,7 +318,7 @@ final class DoomFace {
 
     private func drawEyes(_ px: inout [UInt32], lookDir: Int, healthLevel: Int, special: SpecialFrame) {
         let eyeWhite = makeColor(r: 240, g: 240, b: 240)
-        let iris = makeColor(r: 70, g: 110, b: 60)   // Green-brown iris
+        let iris = rgbColor(look.iris)
         let pupil = makeColor(r: 20, g: 20, b: 20)
         let bloodshot = makeColor(r: 200, g: 60, b: 60)
         let goldEye = makeColor(r: 255, g: 215, b: 0)

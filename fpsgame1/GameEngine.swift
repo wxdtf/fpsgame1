@@ -7,6 +7,7 @@ import Foundation
 
 enum GameStateType {
     case menu
+    case characterSelect
     case briefing
     case playing
     case paused
@@ -84,6 +85,8 @@ final class GameEngine {
     private(set) var levelData: GameWorld.LevelData
     /// Tile-distance field from the player, rebuilt every frame for enemy pathfinding
     private var navField: NavigationField
+    /// The marine the player is running the campaign as
+    private(set) var character: PlayerCharacter = .sarge
 
     var killCount: Int = 0
     var totalEnemies: Int = 0
@@ -130,9 +133,16 @@ final class GameEngine {
         enemies = []
         items = []
         currentLevel = 1
+        player.applyCharacter(character)
         spawnEntities()
         totalEnemies = enemies.count
         spawnInvincibilityTimer = 1.5
+    }
+
+    /// Pick the marine for this campaign and reload the current level with their loadout
+    func selectCharacter(_ chosen: PlayerCharacter) {
+        character = chosen
+        loadLevel(currentLevel)
     }
 
     /// Whether the loaded level is the last one of the campaign
@@ -159,6 +169,7 @@ final class GameEngine {
         let savedWeapons = player.weapons
         let savedAmmo = player.ammo
         let savedWeapon = player.currentWeapon
+        let savedArmor = player.armor
 
         loadLevel(currentLevel)
 
@@ -166,6 +177,7 @@ final class GameEngine {
         player.ammo = savedAmmo
         player.currentWeapon = savedWeapon
         player.weaponState = WeaponState(type: savedWeapon)
+        player.armor = savedArmor
         // Restore some health between levels
         player.health = min(GameConstants.maxHealth, player.health + 25)
         spawnInvincibilityTimer = 1.5
@@ -178,6 +190,7 @@ final class GameEngine {
         world = GameWorld.createLevel(level)
         navField = NavigationField(width: world.width, height: world.height)
         player = Player(x: data.playerStartX, y: data.playerStartY, angle: data.playerStartAngle)
+        player.applyCharacter(character)
         enemies = []
         items = []
         projectiles = []

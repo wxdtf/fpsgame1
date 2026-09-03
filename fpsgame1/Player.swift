@@ -40,6 +40,25 @@ struct Player {
     var berserkTimer: Double = 0
     var isBerserk: Bool { berserkTimer > 0 }
 
+    // Character
+    var characterID: String = PlayerCharacter.sarge.id
+    /// Movement speed factor from the chosen marine
+    var moveSpeedMultiplier: Double = 1.0
+
+    /// Give the player a marine's starting loadout, armour and speed
+    mutating func applyCharacter(_ character: PlayerCharacter) {
+        characterID = character.id
+        weapons = [.fist, .pistol, character.startingWeapon]
+        ammo = [.bullets: 50, .shells: 0, .rockets: 0]
+        for (type, amount) in character.startingAmmo {
+            ammo[type] = amount
+        }
+        armor = min(GameConstants.maxArmor, character.startingArmor)
+        currentWeapon = character.startingWeapon
+        weaponState = WeaponState(type: character.startingWeapon)
+        moveSpeedMultiplier = character.moveSpeedMultiplier
+    }
+
     mutating func rotate(by amount: Double) {
         angle += amount
         if angle < 0 { angle += .pi * 2 }
@@ -48,7 +67,7 @@ struct Player {
 
     mutating func move(forward: Double, strafe: Double, deltaTime: Double, world: GameWorld, sprint: Bool = false) {
         let sprintMult = sprint ? 1.6 : 1.0
-        let speed = GameConstants.playerMoveSpeed * deltaTime * sprintMult
+        let speed = GameConstants.playerMoveSpeed * moveSpeedMultiplier * deltaTime * sprintMult
         let moveX = dirX * forward * speed + (-dirY) * strafe * speed
         let moveY = dirY * forward * speed + dirX * strafe * speed
 

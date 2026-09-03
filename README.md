@@ -11,6 +11,7 @@ A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Me
 
 - **Raycasting Engine** — Classic DOOM-style rendering with textured walls, floors, and ceilings
 - **Metal Accelerated** — GPU-powered rendering for smooth performance
+- **Three Playable Marines** — Sarge, Viper and Grimm, each with their own portrait, armor, speed and starting weapon
 - **Multiple Weapons** — Fist, Pistol, Shotgun, Chaingun, and a Rocket Launcher with splash damage
 - **Enemy AI** — Enemies wander, chase and attack with line-of-sight detection, hunt you through corridors and open doors using a tile navigation field, and flinch by pain chance
 - **Multi-Level Campaign** — Progressive levels with mission briefings, data-driven objectives, increasing difficulty and an end-of-campaign summary
@@ -67,6 +68,7 @@ fpsgame1/
 ├── MetalRenderer.swift    # Metal GPU rendering pipeline
 ├── Raycaster.metal        # Metal shader for raycasting
 ├── Player.swift           # Player state and movement
+├── Character.swift        # Playable marines: portraits, loadouts, stats
 ├── Enemy.swift            # Enemy AI and behavior
 ├── Navigation.swift       # BFS distance field used by enemies to hunt the player
 ├── Weapon.swift           # Weapon definitions and state

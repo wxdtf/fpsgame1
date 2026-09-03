@@ -17,11 +17,18 @@ struct ContentView: View {
             switch viewModel.gameState {
             case .menu:
                 TitleScreenView(onStart: {
-                    viewModel.showBriefing()
+                    viewModel.showCharacterSelect()
                 })
 
+            case .characterSelect:
+                CharacterSelectView(
+                    initialID: viewModel.character.id,
+                    onSelect: { viewModel.chooseCharacter($0) },
+                    onBack: { viewModel.backToMenu() }
+                )
+
             case .briefing:
-                BriefingScreenView(level: viewModel.currentLevel, onStart: {
+                BriefingScreenView(level: viewModel.currentLevel, operative: viewModel.character, onStart: {
                     viewModel.startFromBriefing()
                 })
 
@@ -52,6 +59,7 @@ struct ContentView: View {
             case .campaignComplete:
                 CampaignCompleteView(
                     results: viewModel.levelResults,
+                    operative: viewModel.character.name,
                     onContinue: {
                         viewModel.returnToMenu()
                     }
