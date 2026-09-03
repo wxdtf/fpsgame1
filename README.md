@@ -104,19 +104,32 @@ key card or any enemy/item is unreachable from the start, honouring locked doors
 
 ### Post-merge verification on your Mac
 
-CI only compiles. To play-test what was just merged, run the verification script from
-any clone of the repo:
+CI only compiles. To play-test what was just merged, run the verification script. From
+inside a clone:
 
 ```bash
 tools/verify_local.sh
 ```
 
-It makes the clone identical to `origin/main` (uncommitted changes go into a stash and
-unpushed commits onto a `backup/local-<timestamp>` branch first), validates the levels,
-builds with the newest installed Xcode (a newer Xcode-beta wins), and opens the app with a
-play-test checklist. `--no-launch` runs an 8-second start-up smoke test instead of opening
-the app, `--no-sync` keeps your working tree, and `XCODE_APP=/Applications/Xcode-beta.app`
-forces a specific Xcode.
+Without a clone yet, or from a folder that only contains one (Xcode keeps the repository
+inside the project folder it creates, so `--dir` may point at the folder above it):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wxdtf/fpsgame1/main/tools/verify_local.sh \
+    | bash -s -- --dir ~/wxdtf/FPS
+```
+
+The script finds or creates the clone: `--dir` may be an existing clone, a folder that
+contains one, an empty or missing folder (it is cloned), or a non-git copy of the project
+(moved to `<dir>.backup-<timestamp>` first). Any other folder is left alone. It then makes
+the clone identical to `origin/main` (uncommitted changes go into a stash and unpushed
+commits onto a `backup/local-<timestamp>` branch), validates the levels, builds with the
+newest installed Xcode (a newer Xcode-beta wins), and opens the app with a play-test
+checklist. Since Xcode 26 the Metal compiler is a separate download, so an Xcode that
+already has it is preferred over a newer one without; if none has it, the script downloads
+it (the same as Xcode > Settings > Components > Metal Toolchain). `--no-launch` runs an 8-second start-up smoke test instead of opening the app,
+`--no-sync` keeps your working tree, `XCODE_APP=/Applications/Xcode-beta.app` forces a
+specific Xcode, and `REPO_URL=git@github.com:wxdtf/fpsgame1.git` clones over SSH.
 
 ### Continuous integration
 
