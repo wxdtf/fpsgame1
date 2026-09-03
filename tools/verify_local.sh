@@ -25,7 +25,9 @@
 # alone and reported.
 #
 # Environment overrides:
-#   XCODE_APP=/Applications/Xcode-beta.app        force a specific Xcode
+#   XCODE_APP=/Applications/Xcode-beta.app        force a specific Xcode (its Metal toolchain is
+#                                                 downloaded if missing; by default an Xcode that
+#                                                 already has one is preferred over a newer one without)
 #   BRANCH=main REMOTE=origin                     what to sync to
 #   REPO_URL=git@github.com:wxdtf/fpsgame1.git    where to clone from (default: HTTPS GitHub URL)
 #   CONFIGURATION=Debug                           build configuration
@@ -157,7 +159,11 @@ if (( SYNC )); then
         warn "Local commits not on $REMOTE/$BRANCH were saved to branch backup/local-$stamp"
     fi
 
-    git checkout -q -B "$BRANCH" "$target"
+    if ! git checkout -q -B "$BRANCH" "$target" 2>/dev/null; then
+        # e.g. the branch is checked out in another worktree of this repository
+        warn "Could not check out branch $BRANCH here; using a detached checkout of $REMOTE/$BRANCH instead"
+        git checkout -q --detach "$target"
+    fi
     git clean -fd >/dev/null
     echo "Now at: $(git log -1 --oneline)"
 else
@@ -171,19 +177,41 @@ python3 tools/validate_levels.py
 
 # ---------------------------------------------------------------- 4. Xcode
 log "Selecting Xcode"
+
+xcode_version() {
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$1/Contents/Info.plist" 2>/dev/null || echo 0
+}
+# Since Xcode 26 the Metal compiler is a separate download; Raycaster.metal cannot build without it
+has_metal_toolchain() {
+    DEVELOPER_DIR="$1/Contents/Developer" xcrun -sdk macosx metal --version >/dev/null 2>&1
+}
+
 if [[ -n "${XCODE_APP:-}" ]]; then
     [[ -d "$XCODE_APP" ]] || fail "XCODE_APP not found: $XCODE_APP"
     xcode_app="$XCODE_APP"
 else
-    # Newest CFBundleShortVersionString wins, so Xcode-beta is used when it is newer
-    xcode_app="$(
+    # Newest CFBundleShortVersionString first, so Xcode-beta wins when it is newer;
+    # but an Xcode whose Metal toolchain is installed beats a newer one without it
+    candidates=()
+    while IFS= read -r app; do
+        [[ -n "$app" ]] && candidates+=("$app")
+    done < <(
         for app in /Applications/Xcode*.app; do
             [[ -d "$app" ]] || continue
-            version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist" 2>/dev/null || echo 0)"
-            printf '%s\t%s\n' "$version" "$app"
-        done | sort -V | tail -n 1 | cut -f2-
-    )"
-    [[ -n "$xcode_app" ]] || fail "no Xcode found in /Applications"
+            printf '%s\t%s\n' "$(xcode_version "$app")" "$app"
+        done | sort -rV | cut -f2-
+    )
+    (( ${#candidates[@]} )) || fail "no Xcode found in /Applications"
+    xcode_app=""
+    for app in "${candidates[@]}"; do
+        if has_metal_toolchain "$app"; then xcode_app="$app"; break; fi
+    done
+    if [[ -z "$xcode_app" ]]; then
+        xcode_app="${candidates[0]}"
+    elif [[ "$xcode_app" != "${candidates[0]}" ]]; then
+        warn "Skipping ${candidates[0]}: its Metal toolchain is not installed. Using $xcode_app instead;"
+        warn "set XCODE_APP=${candidates[0]} to use it anyway (the toolchain is downloaded first)."
+    fi
 fi
 export DEVELOPER_DIR="$xcode_app/Contents/Developer"
 echo "Using $xcode_app"
@@ -191,16 +219,28 @@ xcodebuild -version | sed -n '1p'
 sdk="$(xcodebuild -showsdks 2>/dev/null | grep -i 'macosx' | tail -n 1 | sed 's/^[[:space:]]*//' || true)"
 echo "SDK: ${sdk:-unknown}"
 
+if ! has_metal_toolchain "$xcode_app"; then
+    warn "$xcode_app has no Metal toolchain installed, and Raycaster.metal needs it."
+    warn "Downloading it now (a one-time, large download; Xcode > Settings > Components does the same)."
+    xcodebuild -downloadComponent MetalToolchain \
+        || fail "could not download the Metal toolchain; install 'Metal Toolchain' in Xcode > Settings > Components, or set XCODE_APP to an Xcode that has it"
+    has_metal_toolchain "$xcode_app" \
+        || fail "the Metal toolchain is still missing after the download; install it in Xcode > Settings > Components"
+    echo "Metal toolchain installed"
+fi
+
 # ---------------------------------------------------------------- 5. build
 log "Building fpsgame1 ($CONFIGURATION)"
 sign_args=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=)
 if (( UNSIGNED )); then
     sign_args=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=)
 fi
+# Build only this Mac's architecture: faster, and no ONLY_ACTIVE_ARCH warning from a target-only build
 xcodebuild \
     -project fpsgame1.xcodeproj \
     -target fpsgame1 \
     -configuration "$CONFIGURATION" \
+    -arch "$(uname -m)" \
     -quiet \
     "${sign_args[@]}" \
     build

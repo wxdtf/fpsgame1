@@ -125,7 +125,9 @@ contains one, an empty or missing folder (it is cloned), or a non-git copy of th
 the clone identical to `origin/main` (uncommitted changes go into a stash and unpushed
 commits onto a `backup/local-<timestamp>` branch), validates the levels, builds with the
 newest installed Xcode (a newer Xcode-beta wins), and opens the app with a play-test
-checklist. `--no-launch` runs an 8-second start-up smoke test instead of opening the app,
+checklist. Since Xcode 26 the Metal compiler is a separate download, so an Xcode that
+already has it is preferred over a newer one without; if none has it, the script downloads
+it (the same as Xcode > Settings > Components > Metal Toolchain). `--no-launch` runs an 8-second start-up smoke test instead of opening the app,
 `--no-sync` keeps your working tree, `XCODE_APP=/Applications/Xcode-beta.app` forces a
 specific Xcode, and `REPO_URL=git@github.com:wxdtf/fpsgame1.git` clones over SSH.
 
