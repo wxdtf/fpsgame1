@@ -145,6 +145,9 @@ struct HUDView: View {
 
             // Weapon + Level section
             VStack(spacing: 2) {
+                Text(viewModel.character.name)
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundColor(viewModel.character.accentColor)
                 Text("LVL \(viewModel.currentLevel)")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundColor(.cyan)

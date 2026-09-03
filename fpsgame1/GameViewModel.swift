@@ -45,6 +45,10 @@ final class GameViewModel {
     var bossActive: Bool = false
     var bossName: String = ""
     var bossHealthFraction: Double = 1.0
+    /// The marine chosen on the character screen (remembered between launches)
+    var character: PlayerCharacter = PlayerCharacter.named(
+        id: UserDefaults.standard.string(forKey: "selectedCharacter") ?? PlayerCharacter.sarge.id
+    )
 
     let inputManager = InputManager()
 
@@ -78,6 +82,28 @@ final class GameViewModel {
         currentLevel = gameEngine?.currentLevel ?? 1
     }
 
+    /// From the title screen: pick a marine before the first briefing
+    func showCharacterSelect() {
+        if gameEngine == nil {
+            gameEngine = GameEngine()
+        }
+        gameState = .characterSelect
+    }
+
+    /// From the character screen: lock in the marine, then show the briefing
+    func chooseCharacter(_ chosen: PlayerCharacter) {
+        character = chosen
+        UserDefaults.standard.set(chosen.id, forKey: "selectedCharacter")
+        gameEngine?.selectCharacter(chosen)
+        doomFace = DoomFace(look: chosen.look)
+        showBriefing()
+    }
+
+    /// From the character screen: back to the title
+    func backToMenu() {
+        gameState = .menu
+    }
+
     /// Called when player presses enter on the briefing screen
     func startFromBriefing() {
         if timer == nil {
@@ -109,7 +135,7 @@ final class GameViewModel {
         }
 
         if doomFace == nil {
-            doomFace = DoomFace()
+            doomFace = DoomFace(look: character.look)
         }
 
         lastFrameTime = CACurrentMediaTime()
@@ -511,8 +537,8 @@ final class GameViewModel {
 
     private func updateUIState() {
         guard let engine = gameEngine else { return }
-        // Don't overwrite briefing state — it's managed by the view model
-        if gameState == .briefing { return }
+        // Don't overwrite menu flow states — they're managed by the view model
+        if gameState == .briefing || gameState == .characterSelect { return }
         gameState = engine.state
         health = engine.player.health
         armor = engine.player.armor
