@@ -322,7 +322,7 @@ final class MetalRenderer {
         let slot = textures.texCount + index
         let dest = texAtlasBuffer.contents().advanced(by: slot * ppt * MemoryLayout<UInt32>.stride)
         pixels.withUnsafeBufferPointer { buf in
-            memcpy(dest, buf.baseAddress!, min(buf.count, ppt) * MemoryLayout<UInt32>.stride)
+            _ = memcpy(dest, buf.baseAddress!, min(buf.count, ppt) * MemoryLayout<UInt32>.stride)
         }
     }
 
