@@ -1,11 +1,13 @@
-"""Demon: a hulking pink beast that is mostly jaws — hunched, spined back, tiny burning eyes, charges to bite.
+"""Demon: a hulking pink beast that is mostly jaws — hunched, spined back, small burning eyes, charges to bite.
 
-Canvas 96x96. Frames: 0 idle, 1-3 lumber, 4-5 bite, 6 hurt, 7 recoil, 8 collapsing, 9 corpse.
+Canvas 96x96, turntable rig. Frames per view: 0 idle, 1-3 lumber, 4-5 bite, 6 hurt;
+front only: 7 recoil, 8 collapsing, 9 corpse.
 """
 
-from pixelart import Canvas, ramp, rgb
+from pixelart import Canvas, Rig, ramp, rgb, turntable_frames
 
 W, H = 96, 96
+CX = 48
 
 HIDE = ramp(rgb(178, 92, 112), deep=rgb(58, 22, 34), hi=rgb(236, 160, 176))
 UNDER = ramp(rgb(206, 150, 150), deep=rgb(96, 52, 60), hi=rgb(244, 214, 206))
@@ -24,168 +26,188 @@ OUTLINE = rgb(28, 8, 14)
 BACK = ((20, 0, 16), 0.22)
 
 
-def leg(cv, hx, hipY, ground, foot_dx, back, thick=1.0):
-    tint = BACK if back else None
-    kneeX = hx + foot_dx // 3
-    kneeY = hipY + 10
-    footX = hx + foot_dx
-    footY = ground - 5 - (2 if foot_dx > 0 else 0)
-    m = cv.mask().tapered(hx, hipY, 8 * thick, kneeX, kneeY, 6 * thick)
-    cv.part(m, HIDE, thickness=3, rim=1, tint=tint)
-    m = cv.mask().tapered(kneeX, kneeY, 6 * thick, footX, footY - 3, 5 * thick)
-    cv.part(m, HIDE, thickness=3, rim=1, tint=tint)
-    # cloven hoof
-    m = cv.mask().poly([(footX - 6, footY - 2), (footX + 6, footY - 2), (footX + 7, footY + 5), (footX - 7, footY + 5)])
-    cv.part(m, HOOF, thickness=2, rim=1, tint=tint)
-    cv.set(footX, footY + 2, HOOF[0])
-    cv.set(footX, footY + 3, HOOF[0])
-    cv.set(footX, footY + 4, HOOF[0])
+def leg(rig, side, hipY, ground, step):
+    hx = side * 14
+    sway = side * step * 0.3
+    hip = (hx, hipY, 0)
+    knee = (hx + sway * 0.5, hipY + 10, 2 + step * 0.4)
+    foot = (hx + sway, ground - 8 - (2 if step > 0 else 0), 3 + step)
+    rig.limb(hip, 8, knee, 6, HIDE, thickness=3)
+    rig.limb(knee, 6, foot, 5, HIDE, thickness=3)
+
+    def hoof(r):
+        fx, fy = r.p(foot)
+        w = r.width(6.5, 6)
+        m = r.cv.mask().poly([(fx - w, fy + 1), (fx + w, fy + 1), (fx + w + 1, fy + 8), (fx - w - 1, fy + 8)])
+        r.cv.part(m, HOOF, thickness=2, rim=1, tint=r.tint_for(r.depth(foot[0], foot[2])))
+        if not r.side_on:
+            for k in range(3):
+                r.cv.set(int(round(fx)), int(fy) + 5 + k, HOOF[0])
+    rig.custom(rig.depth(foot[0], foot[2]) + 0.3, hoof)
 
 
-def jaws(cv, hx, hy, open_amount, hurt=False):
-    """Head that is mostly mouth. open_amount 0..1."""
-    gap = int(open_amount * 12)
-    # skull (upper head)
-    m = cv.mask()
-    m.oval(hx, hy - 2, 20, 12)
-    m.poly([(hx - 20, hy), (hx + 20, hy), (hx + 18, hy + 6), (hx - 18, hy + 6)])
-    cv.part(m, HIDE, thickness=3, rim=2)
-    # brow ridges
-    for side in (-1, 1):
-        m = cv.mask().oval(hx + side * 9, hy - 8, 6, 3)
-        cv.part(m, HIDE, thickness=1, rim=1, shadow=2)
-    # small burning eyes deep in the sockets
-    for side in (-1, 1):
-        ex = hx + side * 9
-        cv.paint(cv.mask().oval(ex, hy - 5, 3.2, 2.2), HIDE[0])
-        if not hurt:
-            cv.paint(cv.mask().oval(ex, hy - 5, 2, 1.3), EYE)
-            cv.set(ex + side, hy - 5, EYE_CORE)
-        else:
-            cv.set(ex, hy - 5, EYE_CORE)
-            cv.set(ex + side, hy - 5, EYE_CORE)
-    # nostrils
-    for side in (-1, 1):
-        cv.set(hx + side * 2, hy + 1, HIDE[0])
-        cv.set(hx + side * 3, hy + 2, HIDE[0])
-    # upper gum + teeth
-    cv.paint(cv.mask().rect(hx - 17, hy + 6, 35, 2), GUM)
-    for i, mx in enumerate(range(hx - 15, hx + 16, 4)):
-        tall = 5 if i in (0, 7) or mx in (hx - 3, hx + 1) else 3
-        col = TOOTH if tall == 5 else TOOTH_DARK
-        cv.paint(cv.mask().poly([(mx - 1, hy + 7), (mx + 2, hy + 7), (mx, hy + 7 + tall)]), col)
-    # mouth cavity
-    if gap > 0:
-        cv.paint(cv.mask().rect(hx - 16, hy + 8, 33, gap), GUM_DARK)
-        cv.paint(cv.mask().oval(hx, hy + 8 + gap // 2, 8, max(1, gap // 3)), GUM)
-        # drool strands
-        for dx in (-8, 5):
-            for k in range(gap // 2):
-                cv.set(hx + dx, hy + 9 + k, DROOL)
-    # lower jaw
-    jy = hy + 8 + gap
-    m = cv.mask()
-    m.poly([(hx - 17, jy), (hx + 17, jy), (hx + 14, jy + 8), (hx - 14, jy + 8)])
-    cv.part(m, HIDE, thickness=3, rim=0, shadow=1)
-    cv.paint(cv.mask().rect(hx - 16, jy, 33, 2), GUM)
-    for i, mx in enumerate(range(hx - 13, hx + 14, 4)):
-        tall = 5 if i in (0, 6) else 3
-        col = TOOTH if tall == 5 else TOOTH_DARK
-        cv.paint(cv.mask().poly([(mx - 1, jy + 1), (mx + 2, jy + 1), (mx, jy + 1 - tall)]), col)
+def arm(rig, side, shoulder, elbow, hand):
+    rig.limb(shoulder, 7, elbow, 5, HIDE, thickness=3)
+    rig.limb(elbow, 5, hand, 4, HIDE)
+
+    def paw(r):
+        hx, hy = r.p(hand)
+        r.cv.part(r.cv.mask().circle(hx, hy, 4.5), HIDE, thickness=2, rim=1,
+                  tint=r.tint_for(r.depth(hand[0], hand[2])))
+        spread = max(1.5, r.width(3, 1))
+        for dx in (-spread, 0, spread):
+            m = r.cv.mask().poly([(hx + dx - 1, hy + 3), (hx + dx + 1, hy + 3), (hx + dx, hy + 8)])
+            r.cv.part(m, HOOF, thickness=1, rim=0, contact=False)
+    rig.custom(rig.depth(hand[0], hand[2]) + 0.3, paw)
 
 
-def body(cv, tx, hipY, bob=0):
-    # massive hunched torso
-    m = cv.mask()
-    m.oval(tx, hipY - 14, 30, 22)
-    m.oval(tx, hipY - 26, 22, 14)   # hump
-    cv.part(m, HIDE, thickness=4, rim=3)
-    # lighter chest/belly
-    m = cv.mask().oval(tx, hipY - 6, 16, 12)
-    cv.part(m, UNDER, thickness=3, rim=1, shadow=1)
-    for y in range(hipY - 14, hipY + 3, 4):
-        cv.set(tx, y, UNDER[1])
-        cv.set(tx - 4, y + 2, UNDER[1])
-        cv.set(tx + 4, y + 2, UNDER[1])
+def body(rig, hipY):
+    # hump behind/above, then the massive torso
+    rig.blob((0, hipY - 26, -6), 22, 14, 16, HIDE, thickness=4, rim=3)
+
+    def details(r):
+        cv = r.cv
+        if r.facing_away:
+            return
+        bx, by = r.p((0, hipY - 6, 16))
+        cv.part(cv.mask().oval(bx, by, max(2, r.width(16, 6)), 12), UNDER, thickness=3, rim=1, shadow=1)
+        if r.c > 0.6:
+            for y in range(hipY - 14, hipY + 3, 4):
+                cv.set(int(round(bx)), y, UNDER[1])
+                cv.set(int(round(bx)) - 4, y + 2, UNDER[1])
+                cv.set(int(round(bx)) + 4, y + 2, UNDER[1])
+    rig.blob((0, hipY - 14, 0), 30, 22, 22, HIDE, thickness=4, rim=3, after=details)
+
     # skin folds on the shoulders
-    for side in (-1, 1):
-        for k in range(3):
-            y = hipY - 30 + k * 5
-            for d in range(6):
-                cv.set(tx + side * (18 + d), y + d // 2, HIDE[1])
-    # spines along the top of the hump, tallest in the middle
+    def folds(r):
+        for side in (-1, 1):
+            for k in range(3):
+                y = hipY - 30 + k * 5
+                for d in range(6):
+                    fx, _ = r.p((side * (18 + d), 0, 8 - d))
+                    r.cv.set(int(round(fx)), y + d // 2, HIDE[1])
+    rig.custom(rig.depth(0, 12), folds)
+
+    # row of spines across the top of the hump
     for k in range(7):
-        sx = tx - 21 + k * 7
+        x = -21 + k * 7
         height = 6 + (3 if 2 <= k <= 4 else 0)
-        sy = hipY - 37 - abs(k - 3)
-        m = cv.mask().poly([(sx - 2, sy + 4), (sx + 2, sy + 4), (sx, sy - height)])
-        cv.part(m, SPINE, thickness=1, rim=1, shadow=1)
+        base = (x, hipY - 33 - abs(k - 3), -6)
+
+        def draw(r, base=base, height=height):
+            bx, by = r.p(base)
+            m = r.cv.mask().poly([(bx - 2, by + 4), (bx + 2, by + 4), (bx, by - height)])
+            r.cv.part(m, SPINE, thickness=1, rim=1, shadow=1)
+        rig.custom(rig.depth(base[0], base[2]) + 0.2, draw)
 
 
-def arm(cv, shx, shy, elx, ely, hx, hy, back=False):
-    tint = BACK if back else None
-    m = cv.mask().tapered(shx, shy, 7, elx, ely, 5)
-    cv.part(m, HIDE, thickness=3, rim=1, tint=tint)
-    m = cv.mask().tapered(elx, ely, 5, hx, hy, 4)
-    cv.part(m, HIDE, thickness=2, rim=1, tint=tint)
-    m = cv.mask().circle(hx, hy, 4.5)
-    cv.part(m, HIDE, thickness=2, rim=1, tint=tint)
-    for dx in (-3, 0, 3):
-        m = cv.mask().poly([(hx + dx - 1, hy + 3), (hx + dx + 1, hy + 3), (hx + dx, hy + 8)])
-        cv.part(m, HOOF, thickness=1, rim=0, contact=False)
+def jaws(rig, hy, open_amount, hurt=False):
+    gap = int(open_amount * 12)
+    z = 12  # the head sits forward of the body
+
+    def skull_extra(m, r):
+        m.poly([r.p((-20, hy, z)), r.p((20, hy, z)), r.p((18, hy + 6, z + 2)), r.p((-18, hy + 6, z + 2))])
+
+    def face(r):
+        cv = r.cv
+        if r.facing_away:
+            return
+        for side in (-1, 1):
+            bx, by = r.p((side * 9, hy - 8, z + 8))
+            cv.part(cv.mask().oval(bx, by, max(2, r.width(6, 2)), 3), HIDE, thickness=1, rim=1, shadow=2)
+        for side in (-1, 1):
+            ex, ey = r.p((side * 9, hy - 5, z + 11))
+            ex, ey = int(round(ex)), int(ey)
+            cv.paint(cv.mask().oval(ex, ey, max(2, r.width(3.2, 1.2)), 2.2), HIDE[0])
+            if not hurt:
+                cv.paint(cv.mask().oval(ex, ey, max(1.2, r.width(2, 0.8)), 1.3), EYE)
+                cv.set(ex + side * int(round(r.c)), ey, EYE_CORE)
+            else:
+                cv.set(ex, ey, EYE_CORE)
+        for side in (-1, 1):
+            nx, _ = r.p((side * 2, 0, z + 13))
+            cv.set(int(round(nx)), hy + 1, HIDE[0])
+            cv.set(int(round(nx)) + side, hy + 2, HIDE[0])
+        # upper gum + teeth along the front
+        gx, _ = r.p((0, 0, z + 12))
+        gw = max(2, int(round(r.width(17, 5))))
+        cv.paint(cv.mask().rect(int(round(gx)) - gw, hy + 6, 2 * gw + 1, 2), GUM)
+        for i, mx in enumerate(range(int(round(gx)) - gw + 2, int(round(gx)) + gw, 4)):
+            tall = 5 if i % 3 == 0 else 3
+            col = TOOTH if tall == 5 else TOOTH_DARK
+            cv.paint(cv.mask().poly([(mx - 1, hy + 7), (mx + 2, hy + 7), (mx, hy + 7 + tall)]), col)
+        if gap > 0:
+            cv.paint(cv.mask().rect(int(round(gx)) - gw + 1, hy + 8, 2 * gw - 1, gap), GUM_DARK)
+            cv.paint(cv.mask().oval(gx, hy + 8 + gap // 2, max(2, r.width(8, 3)), max(1, gap // 3)), GUM)
+            for dx in (-8, 5):
+                for k in range(gap // 2):
+                    cv.set(int(round(gx)) + int(dx * r.c), hy + 9 + k, DROOL)
+
+    rig.blob((0, hy - 2, z), 20, 12, 14, HIDE, thickness=3, rim=2, extra=skull_extra, after=face)
+
+    jy = hy + 8 + gap
+
+    def lower_jaw(r):
+        cv = r.cv
+        pts = [r.p((-17, jy, z)), r.p((17, jy, z)), r.p((14, jy + 8, z + 1)), r.p((-14, jy + 8, z + 1))]
+        cv.part(cv.mask().poly(pts), HIDE, thickness=3, rim=0, shadow=1)
+        if r.facing_away:
+            return
+        gx, _ = r.p((0, 0, z + 12))
+        gw = max(2, int(round(r.width(16, 4))))
+        cv.paint(cv.mask().rect(int(round(gx)) - gw, jy, 2 * gw + 1, 2), GUM)
+        for i, mx in enumerate(range(int(round(gx)) - gw + 3, int(round(gx)) + gw, 4)):
+            tall = 5 if i % 3 == 0 else 3
+            col = TOOTH if tall == 5 else TOOTH_DARK
+            cv.paint(cv.mask().poly([(mx - 1, jy + 1), (mx + 2, jy + 1), (mx, jy + 1 - tall)]), col)
+    rig.custom(rig.depth(0, z) + 0.5, lower_jaw)
 
 
-def draw_standing(frame):
+def draw_standing(frame, turn):
     cv = Canvas(W, H)
+    rig = Rig(cv, turn, CX)
     biting = frame in (4, 5)
     hurt = frame == 6
     phase = {1: 0, 2: 1, 3: 2}.get(frame, -1)
-    bob, lf, rf = 0, 0, 0
+    bob, lstep, rstep = 0, 0, 0
     if phase == 0:
-        lf, rf, bob = 7, -7, 2
+        lstep, rstep, bob = 7, -7, 2
     elif phase == 1:
-        lf, rf, bob = 0, 0, -2
+        lstep, rstep, bob = 0, 0, -2
     elif phase == 2:
-        lf, rf, bob = -7, 7, 2
+        lstep, rstep, bob = -7, 7, 2
 
     ground = 94
     hipY = 66 + bob + (2 if hurt else 0)
-    tx = 48 + (-3 if hurt else 0)
 
-    if lf >= rf:
-        leg(cv, tx + 14, hipY, ground, rf, back=True)
-        leg(cv, tx - 14, hipY, ground, lf, back=False)
-    else:
-        leg(cv, tx - 14, hipY, ground, lf, back=True)
-        leg(cv, tx + 14, hipY, ground, rf, back=False)
-
-    body(cv, tx, hipY, bob)
+    leg(rig, +1, hipY, ground, lstep)
+    leg(rig, -1, hipY, ground, rstep)
+    body(rig, hipY)
 
     shY = hipY - 24
     if biting:
-        # arms reaching forward and out
-        arm(cv, tx - 26, shY, tx - 36, shY + 6, tx - 40, shY + 20)
-        arm(cv, tx + 26, shY, tx + 36, shY + 6, tx + 40, shY + 20)
+        arm(rig, +1, (26, shY, 4), (36, shY + 6, 10), (36, shY + 20, 18))
+        arm(rig, -1, (-26, shY, 4), (-36, shY + 6, 10), (-36, shY + 20, 18))
     else:
-        sw = lf // 3
-        arm(cv, tx - 26, shY, tx - 34 + sw, shY + 14, tx - 32 + sw * 2, shY + 30, back=(lf < rf))
-        arm(cv, tx + 26, shY, tx + 34 - sw, shY + 14, tx + 32 - sw * 2, shY + 30, back=(rf < lf))
+        arm(rig, +1, (26, shY, 4), (34, shY + 14, lstep * 0.5), (32, shY + 30, lstep))
+        arm(rig, -1, (-26, shY, 4), (-34, shY + 14, rstep * 0.5), (-32, shY + 30, rstep))
 
     open_amount = 0.15 if not biting else (1.0 if frame == 4 else 0.45)
     if hurt:
         open_amount = 0.6
-    jaws(cv, tx, hipY - 22 + (3 if biting else 0), open_amount, hurt=hurt)
+    jaws(rig, hipY - 22 + (3 if biting else 0), open_amount, hurt=hurt)
+    rig.render()
 
     if hurt:
-        for (bx, by, r) in ((tx - 8, hipY - 12, 4), (tx + 6, hipY - 6, 3), (tx - 14, hipY - 20, 2)):
+        for (bx, by, r) in ((CX - 8, hipY - 12, 4), (CX + 6, hipY - 6, 3), (CX - 14, hipY - 20, 2)):
             cv.paint(cv.mask().circle(bx, by, r), BLOOD)
-        cv.paint(cv.mask().circle(tx - 6, hipY - 9, 2), BLOOD_DARK)
+        cv.paint(cv.mask().circle(CX - 6, hipY - 9, 2), BLOOD_DARK)
     cv.outline(OUTLINE)
     return cv
 
 
 def draw_recoil():
-    cv = draw_standing(6)
+    cv = draw_standing(6, 0)
     out = Canvas(W, H)
     for y in range(H):
         shift = -(H - y) // 12
@@ -205,9 +227,10 @@ def draw_falling():
     cv = Canvas(W, H)
     ground = 94
     hipY = 74
-    leg(cv, 30, hipY - 2, ground, -2, back=True)
-    leg(cv, 66, hipY, ground, 2, back=False)
-    # body pitched forward
+    rig = Rig(cv, 0, CX)
+    leg(rig, -1, hipY - 2, ground, -2)
+    leg(rig, +1, hipY, ground, 2)
+    rig.render()
     m = cv.mask()
     m.oval(50, hipY - 10, 30, 18)
     m.oval(44, hipY - 20, 20, 12)
@@ -219,9 +242,11 @@ def draw_falling():
         sy = hipY - 30 + k * 2
         m = cv.mask().poly([(sx - 2, sy + 6), (sx + 2, sy + 6), (sx - 1, sy - 3)])
         cv.part(m, SPINE, thickness=1, rim=1, shadow=1)
-    arm(cv, 26, hipY - 12, 14, hipY - 2, 10, hipY + 12, back=True)
-    arm(cv, 74, hipY - 12, 84, hipY - 2, 86, hipY + 12)
-    jaws(cv, 48, hipY - 2, 0.8, hurt=True)
+    rig = Rig(cv, 0, CX)
+    arm(rig, -1, (-22, hipY - 12, 0), (-34, hipY - 2, 4), (-38, hipY + 12, 8))
+    arm(rig, +1, (26, hipY - 12, 0), (36, hipY - 2, 4), (38, hipY + 12, 8))
+    jaws(rig, hipY - 2, 0.8, hurt=True)
+    rig.render()
     cv.paint(cv.mask().circle(52, hipY - 14, 5), BLOOD)
     cv.paint(cv.mask().circle(58, hipY - 10, 3), BLOOD_DARK)
     cv.outline(OUTLINE)
@@ -234,7 +259,6 @@ def draw_corpse():
     ground = 92
     cv.paint(cv.mask().oval(48, ground, 38, 3), BLOOD_DARK)
     cv.paint(cv.mask().oval(46, ground - 1, 26, 2), BLOOD)
-    # legs sprawled left
     m = cv.mask().tapered(30, ground - 12, 7, 12, ground - 8, 5)
     cv.part(m, HIDE, thickness=3, tint=BACK)
     m = cv.mask().poly([(4, ground - 12), (14, ground - 12), (15, ground - 5), (3, ground - 5)])
@@ -243,7 +267,6 @@ def draw_corpse():
     cv.part(m, HIDE, thickness=3)
     m = cv.mask().poly([(8, ground - 6), (18, ground - 6), (19, ground), (7, ground)])
     cv.part(m, HOOF, thickness=2)
-    # body mound
     m = cv.mask().oval(52, ground - 12, 28, 11)
     cv.part(m, HIDE, thickness=4, rim=2)
     m = cv.mask().oval(46, ground - 6, 14, 5)
@@ -252,13 +275,11 @@ def draw_corpse():
         sx = 40 + k * 6
         m = cv.mask().poly([(sx - 2, ground - 22), (sx + 2, ground - 22), (sx, ground - 30 + (k % 2) * 2)])
         cv.part(m, SPINE, thickness=1, rim=1, shadow=1)
-    # arm out to the right
     m = cv.mask().tapered(70, ground - 10, 5, 84, ground - 5, 4)
     cv.part(m, HIDE, thickness=2)
     for dx in (86, 89, 92):
         m = cv.mask().poly([(dx - 1, ground - 5), (dx + 1, ground - 5), (dx + 1, ground - 1)])
         cv.part(m, HOOF, thickness=1, rim=0, contact=False)
-    # head on the right, jaw slack on the floor
     hx, hy = 78, ground - 16
     m = cv.mask().oval(hx, hy, 14, 8)
     cv.part(m, HIDE, thickness=3, rim=1)
@@ -273,8 +294,4 @@ def draw_corpse():
 
 
 def frames():
-    out = [draw_standing(f) for f in range(7)]
-    out.append(draw_recoil())
-    out.append(draw_falling())
-    out.append(draw_corpse())
-    return out
+    return turntable_frames(draw_standing, lambda: [draw_recoil(), draw_falling(), draw_corpse()])

@@ -207,6 +207,39 @@ struct Enemy: Identifiable {
         }
     }
 
+    /// Which authored rotation of the sprite sheet shows to a viewer at (viewerX, viewerY)
+    struct SpriteView: Equatable {
+        /// 0 front (facing the viewer), 1 front-quarter, 2 side, 3 back-quarter, 4 back
+        let rotation: Int
+        /// The authored views face screen-left; mirror them when the other side shows
+        let mirrored: Bool
+    }
+
+    /// Sheet layout: frames 0-9 are the front view (0 idle, 1-3 walk, 4-5 attack, 6 hurt,
+    /// 7 recoil, 8 falling, 9 corpse); then rotations 1-4 each carry frames 0-6.
+    static let rotatedFrameCount = 7
+    static let frontFrameCount = 10
+
+    func spriteView(viewerX: Double, viewerY: Double) -> SpriteView {
+        let toViewer = atan2(viewerY - y, viewerX - x)
+        var rel = angle - toViewer
+        // normalise to (-π, π]
+        rel = rel - (2 * .pi) * floor((rel + .pi) / (2 * .pi))
+        let sector = min(4, Int((abs(rel) / (.pi / 4)).rounded()))
+        let mirrored = rel < 0 && sector != 0 && sector != 4
+        return SpriteView(rotation: sector, mirrored: mirrored)
+    }
+
+    /// Frame index into the baked sheet for a viewer at (viewerX, viewerY), and whether
+    /// the frame should be drawn mirrored. Death frames are front-only.
+    func spriteFrame(viewerX: Double, viewerY: Double) -> (index: Int, mirrored: Bool) {
+        let base = spriteFrameOffset
+        guard base < Self.rotatedFrameCount else { return (base, false) }
+        let view = spriteView(viewerX: viewerX, viewerY: viewerY)
+        guard view.rotation > 0 else { return (base, false) }
+        return (Self.frontFrameCount + (view.rotation - 1) * Self.rotatedFrameCount + base, view.mirrored)
+    }
+
     /// Vertical offset for death animation (sprite settles toward ground)
     var deathVOffset: Double {
         switch state {
