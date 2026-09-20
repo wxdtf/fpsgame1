@@ -58,6 +58,7 @@ struct SpriteInstance {
 
     static let depthTest: Int32 = 1
     static let shaded: Int32 = 2
+    static let flipX: Int32 = 4
 }
 
 /// Must match PostUniforms in Raycaster.metal
@@ -425,7 +426,7 @@ final class MetalRenderer {
         let invDet = 1.0 / (player.planeX * player.dirY - player.dirX * player.planeY)
 
         func add(x: Double, y: Double, location: SpriteAtlas.FrameLocation,
-                 vOffset: Double, scale: Double, fullBright: Bool) {
+                 vOffset: Double, scale: Double, fullBright: Bool, mirrored: Bool = false) {
             let dx = x - player.x, dy = y - player.y
             let dist = sqrt(dx * dx + dy * dy)
             guard dist < GameConstants.maxRenderDistance else { return }
@@ -459,7 +460,7 @@ final class MetalRenderer {
             inst.sW = Int32(sW); inst.sH = Int32(sH)
             inst.atlasOffset = Int32(location.offset)
             inst.srcW = Int32(location.width); inst.srcH = Int32(location.height)
-            inst.flags = SpriteInstance.depthTest | SpriteInstance.shaded
+            inst.flags = SpriteInstance.depthTest | SpriteInstance.shaded | (mirrored ? SpriteInstance.flipX : 0)
             inst.depth = Float(tY)
             inst.shade = Float(shade)
             inst.fog = Float(fog)
@@ -468,11 +469,14 @@ final class MetalRenderer {
 
         for enemy in enemies {
             let id = SpriteSheetID.enemy(enemy.type)
-            let location = spriteAtlas.location(id, frame: enemy.spriteFrameOffset)
+            // Pick the rotation that matches where the enemy faces relative to the player
+            let (frame, mirrored) = enemy.spriteFrame(viewerX: player.x, viewerY: player.y)
+            let location = spriteAtlas.location(id, frame: frame)
             let scale = enemy.type.spriteScale
             // Bigger enemies are raised so their feet stay on the floor line
             add(x: enemy.x, y: enemy.y, location: location,
-                vOffset: enemy.deathVOffset + (1.0 - scale) / 2.0, scale: scale, fullBright: false)
+                vOffset: enemy.deathVOffset + (1.0 - scale) / 2.0, scale: scale, fullBright: false,
+                mirrored: mirrored)
         }
         for item in items where !item.isCollected {
             let location = spriteAtlas.location(.items, frame: item.spriteIndex)

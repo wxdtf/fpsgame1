@@ -9,12 +9,12 @@ place to look before starting new work; update it when a milestone lands.
 |------|-------|
 | Rendering | Complete. Four Metal compute passes per frame at 960×600 (floor/ceiling with torch light, DDA walls + z-buffer, z-tested sprites + weapon overlay, screen effects + sharp-bilinear pixel-art upscale) presented straight into an `MTKView` with three frames in flight and no CPU readback; the view's display link drives the game loop. A multi-core CPU raycaster with CPU sprite compositing remains as the fallback when Metal is unavailable. |
 | Player | Three playable marines (Sarge, Viper, Grimm) with distinct portraits, starting weapon, armor and speed. Movement with wall sliding and unstick, sprint, view bob, armor absorption, berserk, keys, 5 weapons (fist, pistol, shotgun, chaingun, rocket launcher with splash damage) with switch/fire animations. |
-| Enemies | 4 types (imp, soldier, demon, and the Baron of Hell boss). State machine: idle → patrol → chase → attack → hurt → dying → dead. Line-of-sight detection, projectile and melee attacks, tile-based pathfinding when out of sight, door opening, pain chance, wandering patrols. Bosses claw up close, throw plasma at range, keep advancing between attacks and show a HUD health bar. |
+| Enemies | 4 types (imp, WWII German infantryman, demon, and the Baron of Hell boss). State machine: idle → patrol → chase → attack → hurt → dying → dead. Line-of-sight detection, projectile and melee attacks, tile-based pathfinding when out of sight, door opening, pain chance, wandering patrols. Bosses claw up close, throw plasma at range, keep advancing between attacks and show a HUD health bar. |
 | World | 32×32 tile maps, 11 tile types, regular + colour-locked doors with auto-close, damage floors (nukage), exit portal, per-level difficulty scaling. |
 | Campaign | 4 levels with briefings, data-driven mission objectives (item retrieval / extermination), level summary with rating, campaign summary, death restarts the current level. |
 | UI / feedback | Title, briefing (typewriter), pause, death, level and campaign summary screens. HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, screen shake, muzzle flash, death camera. |
 | Audio | Fully procedural: 14 sound effects and one looping BGM track per level (4 tracks), generated at runtime with AVAudioEngine. |
-| Assets | None on disk. Textures, item/weapon sprites, face frames and sounds are generated procedurally in Swift. The four enemy sheets are pixel art authored in `tools/enemy_art/*.py` (parts with automatic cel shading, contact shadows and outlines; 10 frames each at 64×96 / 96×96 / 96×120) and baked into `EnemySpriteData.swift` as run-length strings by `tools/enemy_art/build.py`. |
+| Assets | None on disk. Textures, item/weapon sprites, face frames and sounds are generated procedurally in Swift. The four enemy sheets are pixel art authored in `tools/enemy_art/*.py` on a turntable rig (a 3D part layout projected to the front, 3/4, side, back-3/4 and back views, with automatic cel shading, contact shadows and outlines; 38 frames each at 64×96 / 96×96 / 96×120) and baked into `EnemySpriteData.swift` as run-length strings by `tools/enemy_art/build.py`. Enemies show the rotation that matches their facing relative to the player, mirrored for the other side. |
 | Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). GitHub Actions builds the app on a macOS runner and runs the validator on every push and PR. `tools/verify_local.sh` syncs a Mac clone to `main`, validates, builds with the newest Xcode and launches the app for a play-test. `fpsgame1Tests` (XCTest, hosted by the app) covers the Foundation-only engine: world/door solidity, navigation field, player movement and camera, weapons, enemy state machine, level flow and shipped level data. CI runs the tests in Debug and then builds Release. |
 
 ## Milestone 1 — Correctness & campaign completeness (done on this branch)
@@ -100,24 +100,32 @@ Found by reviewing the code and by running the new level validator:
 ## How to work on enemy art
 
 1. Edit the enemy's module in `tools/enemy_art/` (`imp.py`, `demon.py`, `soldier.py`, `baron.py`).
-   Each frame is built from parts (`Mask` shapes filled with a 5-tone material ramp) that
-   `Canvas.part` cel-shades from a top-left light and drops a contact shadow onto whatever
-   is underneath; `Canvas.outline` adds the 1px outline at the end.
+   Standing frames are built on a `Rig`: parts are placed in a small 3D space (x lateral,
+   y down, z toward the viewer) as limbs, blobs and custom closures, and the rig projects
+   them for each turn angle (0/45/90/135/180°) and draws them far to near. `Canvas.part`
+   cel-shades each part from a top-left light and drops a contact shadow onto whatever is
+   underneath; `Canvas.outline` adds the 1px outline at the end. Views are drawn facing
+   screen-left; the engine mirrors them for the other side. Death frames are front-only.
 2. `python3 tools/enemy_art/build.py --preview` writes `build/enemy_art/<enemy>.png` sheets
    (3× scale, all 10 frames) to look at.
 3. `python3 tools/enemy_art/build.py` regenerates `fpsgame1/EnemySpriteData.swift`. Commit both.
-   Frame order is fixed: 0 idle, 1–3 walk, 4–5 attack, 6 hurt, 7 recoil, 8 falling, 9 corpse.
+   Sheet layout is fixed: front frames 0 idle, 1–3 walk, 4–5 attack, 6 hurt, 7 recoil, 8 falling,
+   9 corpse; then frames 0–6 again for each of the four other rotations (`Enemy.spriteFrame`).
 
 ## How to work on enemy art
 
 1. Edit the enemy's module in `tools/enemy_art/` (`imp.py`, `demon.py`, `soldier.py`, `baron.py`).
-   Each frame is built from parts (`Mask` shapes filled with a 5-tone material ramp) that
-   `Canvas.part` cel-shades from a top-left light and drops a contact shadow onto whatever
-   is underneath; `Canvas.outline` adds the 1px outline at the end.
+   Standing frames are built on a `Rig`: parts are placed in a small 3D space (x lateral,
+   y down, z toward the viewer) as limbs, blobs and custom closures, and the rig projects
+   them for each turn angle (0/45/90/135/180°) and draws them far to near. `Canvas.part`
+   cel-shades each part from a top-left light and drops a contact shadow onto whatever is
+   underneath; `Canvas.outline` adds the 1px outline at the end. Views are drawn facing
+   screen-left; the engine mirrors them for the other side. Death frames are front-only.
 2. `python3 tools/enemy_art/build.py --preview` writes `build/enemy_art/<enemy>.png` sheets
    (3× scale, all 10 frames) to look at.
 3. `python3 tools/enemy_art/build.py` regenerates `fpsgame1/EnemySpriteData.swift`. Commit both.
-   Frame order is fixed: 0 idle, 1–3 walk, 4–5 attack, 6 hurt, 7 recoil, 8 falling, 9 corpse.
+   Sheet layout is fixed: front frames 0 idle, 1–3 walk, 4–5 attack, 6 hurt, 7 recoil, 8 falling,
+   9 corpse; then frames 0–6 again for each of the four other rotations (`Enemy.spriteFrame`).
 
 ## How to work on levels
 

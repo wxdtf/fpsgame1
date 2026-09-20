@@ -58,6 +58,7 @@ struct SpriteInstance {
 };
 constant int kSpriteDepthTest = 1;
 constant int kSpriteShaded = 2;
+constant int kSpriteFlipX = 4;     // draw the frame mirrored (other-side rotations)
 
 // Must match PostUniforms in MetalRenderer.swift
 struct PostUniforms {
@@ -413,6 +414,7 @@ kernel void spriteKernel(
         int texX = (x - s.leftX) * s.srcW / s.sW;
         int texY = (y - s.topY) * s.srcH / s.sH;
         if (texX < 0 || texX >= s.srcW || texY < 0 || texY >= s.srcH) continue;
+        if (s.flags & kSpriteFlipX) texX = s.srcW - 1 - texX;
 
         uint pixel = spriteAtlas[s.atlasOffset + texY * s.srcW + texX];
         if ((pixel >> 24) == 0) continue;  // transparent

@@ -351,6 +351,8 @@ final class Renderer {
             var scale: Double = 1.0
             /// Self-lit sprites (projectiles, explosions) ignore distance shading but keep fog
             var fullBright: Bool = false
+            /// Draw the frame flipped horizontally (other-side enemy rotations)
+            var mirrored: Bool = false
         }
 
         var entries: [SpriteEntry] = []
@@ -360,14 +362,15 @@ final class Renderer {
             let dist = sqrt(dx * dx + dy * dy)
             guard dist < GameConstants.maxRenderDistance else { continue }
             let sheet = sprites.enemySprites(for: enemy.type)
-            let frameIdx = min(enemy.spriteFrameOffset, sheet.frameCount - 1)
+            let (frame, mirrored) = enemy.spriteFrame(viewerX: player.x, viewerY: player.y)
+            let frameIdx = min(frame, sheet.frameCount - 1)
             // Bigger enemies are raised so their feet stay on the floor line
             let scale = enemy.type.spriteScale
             entries.append(SpriteEntry(x: enemy.x, y: enemy.y, dist: dist,
                                        pixels: sheet.frames[frameIdx],
                                        spriteW: sheet.width, spriteH: sheet.height,
                                        vOffset: enemy.deathVOffset + (1.0 - scale) / 2.0,
-                                       scale: scale))
+                                       scale: scale, mirrored: mirrored))
         }
 
         for item in items where !item.isCollected {
@@ -445,8 +448,9 @@ final class Renderer {
             entry.pixels.withUnsafeBufferPointer { src in
                 for scrX in dsx...dex {
                     guard tY < zBuf[scrX] else { continue }
-                    let texX = (scrX - leftX) * srcW / sW
+                    var texX = (scrX - leftX) * srcW / sW
                     guard texX >= 0, texX < srcW else { continue }
+                    if entry.mirrored { texX = srcW - 1 - texX }
 
                     for scrY in dsy...dey {
                         let texY = (scrY - topY) * srcH / sH

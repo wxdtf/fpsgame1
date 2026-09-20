@@ -49,7 +49,9 @@ def main(argv):
     for name, module in SHEETS:
         frames = module.frames()
         w, h = module.W, module.H
-        write_png(os.path.join(out_dir, f"{name}.png"), frames, scale=3, cols=5)
+        # preview rows: front 0-6, then each turn, then the death frames
+        preview = frames[:7] + frames[10:] + frames[7:10] if len(frames) > 10 else frames
+        write_png(os.path.join(out_dir, f"{name}.png"), preview, scale=3, cols=7)
         print(f"{name}: {len(frames)} frames of {w}x{h}")
         if not preview_only:
             swift_parts.append(swift_sheet(name, w, h, frames))

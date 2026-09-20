@@ -13,7 +13,7 @@ A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Me
 - **Metal Accelerated** — GPU-powered rendering for smooth performance
 - **Three Playable Marines** — Sarge, Viper and Grimm, each with their own portrait, armor, speed and starting weapon
 - **Multiple Weapons** — Fist, Pistol, Shotgun, Chaingun, and a Rocket Launcher with splash damage
-- **Enemy AI** — Enemies wander, chase and attack with line-of-sight detection, hunt you through corridors and open doors using a tile navigation field, and flinch by pain chance
+- **Enemy AI** — Enemies wander, chase and attack with line-of-sight detection, are drawn from five rotations depending on where they face, hunt you through corridors and open doors using a tile navigation field, and flinch by pain chance
 - **Multi-Level Campaign** — Progressive levels with mission briefings, data-driven objectives, increasing difficulty and an end-of-campaign summary
 - **Interactive Doors** — Regular and color-keyed doors (Red, Blue, Yellow) requiring key pickups
 - **Item Pickups** — Health packs, armor, ammo, and weapon pickups scattered across levels

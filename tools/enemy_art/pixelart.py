@@ -389,3 +389,103 @@ def swift_sheet(name, w, h, canvases):
     lines.append("        ]")
     lines.append("    )")
     return "\n".join(lines)
+
+
+# -- turntable rig ----------------------------------------------------------
+#
+# Bodies are described in a simple 3D "rig space" and projected onto the
+# canvas for one of five turn angles, so a single definition yields the front,
+# 3/4, side, back-3/4 and back views. Axes: x lateral (viewer's right in the
+# front view = the creature's left), y down the screen, z forward toward the
+# viewer in the front view. Views are drawn with the creature facing
+# screen-left; the engine mirrors them for the other side.
+
+import math
+
+
+class Rig:
+    def __init__(self, cv, turn_deg, cx):
+        self.cv = cv
+        self.cx = cx
+        self.turn = turn_deg
+        phi = math.radians(turn_deg)
+        self.c, self.s = math.cos(phi), math.sin(phi)
+        self.parts = []
+
+    # projection
+    def sx(self, x, z):
+        return self.cx + x * self.c - z * self.s
+
+    def depth(self, x, z):
+        """Larger = nearer the viewer."""
+        return z * self.c + x * self.s
+
+    def p(self, pt):
+        x, y, z = pt
+        return (self.sx(x, z), y)
+
+    def width(self, rx, rz):
+        """Screen half-width of an ellipsoid with lateral radius rx and depth radius rz."""
+        return abs(rx * self.c) + abs(rz * self.s)
+
+    @property
+    def facing_away(self):
+        return self.c < -0.2
+
+    @property
+    def side_on(self):
+        return abs(self.s) > 0.9
+
+    # parts: (depth, draw closure); rendered far to near
+    def add(self, depth, fn):
+        self.parts.append((depth, fn))
+
+    def tint_for(self, depth, threshold=-4.0):
+        return ((20, 0, 14), 0.22) if depth < threshold else None
+
+    def limb(self, a, ra, b, rb, material, thickness=2, rim=1, after=None, tint="auto", shadow=2):
+        d = (self.depth(a[0], a[2]) + self.depth(b[0], b[2])) / 2
+
+        def draw():
+            m = self.cv.mask().tapered(*self.p(a), ra, *self.p(b), rb)
+            t = self.tint_for(d) if tint == "auto" else tint
+            self.cv.part(m, material, thickness=thickness, rim=rim, tint=t, shadow=shadow)
+            if after:
+                after(self)
+        self.add(d, draw)
+
+    def blob(self, center, rx, ry, rz, material, thickness=3, rim=2, after=None, tint="auto", shadow=2,
+             extra=None):
+        """An ellipsoid. `extra(mask, rig)` may add to the silhouette before shading."""
+        d = self.depth(center[0], center[2])
+
+        def draw():
+            sx, sy = self.p(center)
+            m = self.cv.mask().oval(sx, sy, self.width(rx, rz), ry)
+            if extra:
+                extra(m, self)
+            t = self.tint_for(d) if tint == "auto" else tint
+            self.cv.part(m, material, thickness=thickness, rim=rim, tint=t, shadow=shadow)
+            if after:
+                after(self)
+        self.add(d, draw)
+
+    def custom(self, depth, fn):
+        """A hand-drawn part; fn(rig) is called when its turn comes in the depth order."""
+        self.add(depth, lambda: fn(self))
+
+    def render(self):
+        for _, fn in sorted(self.parts, key=lambda t: t[0]):
+            fn()
+        self.parts = []
+
+
+TURNS = [0, 45, 90, 135, 180]
+
+
+def turntable_frames(draw_standing, draw_death, standing_count=7):
+    """Sheet layout: front 0..9, then for each of the four other turns frames 0..6."""
+    out = [draw_standing(f, 0) for f in range(standing_count)] + draw_death()
+    for turn in TURNS[1:]:
+        out += [draw_standing(f, turn) for f in range(standing_count)]
+    return out

@@ -1,12 +1,15 @@
 """Imp: a hunched, horned, long-armed hellspawn with glowing yellow eyes that throws fireballs.
 
-Canvas 64x96, feet on the bottom row. Frames: 0 idle, 1-3 walk, 4-5 attack,
-6 hurt, 7 recoil, 8 falling, 9 corpse.
+Canvas 64x96, feet on the bottom row. Built on the turntable rig: one body
+definition projected to the front, 3/4, side, back-3/4 and back views.
+Frames per view: 0 idle, 1-3 walk, 4-5 attack, 6 hurt; front only: 7 recoil,
+8 falling, 9 corpse.
 """
 
-from pixelart import Canvas, ramp, rgb
+from pixelart import Canvas, Rig, ramp, rgb, turntable_frames
 
 W, H = 64, 96
+CX = 32
 
 SKIN = ramp(rgb(168, 62, 34), deep=rgb(58, 16, 12), hi=rgb(236, 142, 96))
 BELLY = ramp(rgb(188, 118, 78), deep=rgb(92, 44, 28), hi=rgb(238, 194, 154))
@@ -23,11 +26,12 @@ BLOOD = rgb(150, 12, 10)
 BLOOD_DARK = rgb(96, 6, 6)
 OUTLINE = rgb(24, 8, 8)
 FIRE = [rgb(255, 250, 200), rgb(255, 200, 60), rgb(255, 120, 20), rgb(170, 40, 10)]
-BACK = ((24, 0, 12), 0.22)   # tint for limbs on the far side
+BACK = ((24, 0, 12), 0.22)
 
 
 def claws(cv, points, up=False, length=5):
     for tx, ty in points:
+        tx, ty = int(round(tx)), int(round(ty))
         if up:
             m = cv.mask().poly([(tx - 1, ty), (tx + 1, ty), (tx, ty - length)])
         else:
@@ -35,193 +39,254 @@ def claws(cv, points, up=False, length=5):
         cv.part(m, CLAW, thickness=1, rim=0, contact=False)
 
 
-def leg(cv, hx, hipY, ground, foot_dx, back):
-    """Digitigrade leg: thigh forward-down, hock bent back, long foot with claws."""
-    tint = BACK if back else None
-    kneeX = hx + 1 + foot_dx // 3
-    kneeY = hipY + 11 - abs(foot_dx) // 4
-    hockX = hx - 4 + foot_dx // 2
-    hockY = hipY + 20 - abs(foot_dx) // 5
-    toeX = hx + 2 + foot_dx
-    toeY = ground - 1 - (2 if foot_dx > 0 else 0)
-    m = cv.mask().tapered(hx, hipY + 1, 6, kneeX, kneeY, 4)
-    cv.part(m, SKIN, thickness=3, rim=1, tint=tint)
-    m = cv.mask().tapered(kneeX, kneeY, 4, hockX, hockY, 3)
-    cv.part(m, SKIN, thickness=2, rim=1, tint=tint)
-    # foot from the hock forward to the toes
-    m = cv.mask().tapered(hockX, hockY, 3, toeX, toeY - 2, 3.5)
-    cv.part(m, SKIN, thickness=2, rim=1, tint=tint)
-    m = cv.mask().oval(toeX + 1, toeY - 1, 5, 2.5)
-    cv.part(m, SKIN, thickness=2, rim=0, tint=tint)
-    claws(cv, [(toeX - 3, toeY), (toeX + 1, toeY + 1), (toeX + 5, toeY)], length=4)
-    # heel spur
-    claws(cv, [(hockX - 2, hockY + 1)], length=3)
+def spike(cv, base_a, base_b, tip):
+    m = cv.mask().poly([base_a, base_b, tip])
+    cv.part(m, SPIKE, thickness=1, rim=1, shadow=1)
 
 
-def arm(cv, shx, shy, elx, ely, hx, hy, back=False, fingers_up=False, spikes=True):
-    tint = BACK if back else None
-    m = cv.mask().tapered(shx, shy, 5, elx, ely, 3.5)
-    cv.part(m, SKIN, thickness=2, rim=1, tint=tint)
-    m = cv.mask().tapered(elx, ely, 3.5, hx, hy, 3)
-    cv.part(m, SKIN, thickness=2, rim=1, tint=tint)
-    if spikes:
-        # two small spikes on the forearm, pointing away from the hand
-        for k in (0.35, 0.65):
-            px, py = elx + (hx - elx) * k, ely + (hy - ely) * k
-            side = -1 if hx < 32 else 1
-            m = cv.mask().poly([(px + side * 2, py - 1), (px + side * 2, py + 1), (px + side * 6, py - 2)])
-            cv.part(m, SPIKE, thickness=1, rim=0, contact=False)
-    m = cv.mask().circle(hx, hy, 3.5)
-    cv.part(m, SKIN, thickness=2, rim=1, tint=tint)
-    if fingers_up:
-        claws(cv, [(hx - 3, hy - 2), (hx, hy - 3), (hx + 3, hy - 2)], up=True, length=6)
+def leg(rig, side, hipY, ground, step):
+    """Digitigrade leg. side = +1 (creature's left) / -1. step: forward (+z) offset of the foot."""
+    hx = side * 7
+    sway = side * step * 0.35          # a little lateral spread so the walk reads head-on
+    hip = (hx, hipY + 1, 0)
+    knee = (hx + sway * 0.5, hipY + 11 - abs(step) // 4, 3 + step * 0.4)
+    hock = (hx - side + sway, hipY + 20 - abs(step) // 5, -5 + step * 0.5)
+    toe = (hx + sway, ground - 1 - (2 if step > 0 else 0), 5 + step)
+    rig.limb(hip, 6, knee, 4, SKIN, thickness=3)
+    rig.limb(knee, 4, hock, 3, SKIN)
+
+    def foot(r):
+        cv = r.cv
+        ax, ay = r.p(hock)
+        tx, ty = r.p(toe)
+        m = cv.mask().tapered(ax, ay, 3, tx, ty - 2, 3.5)
+        m.oval(tx + (0 if r.side_on else 1), ty - 1, r.width(5, 4), 2.5)
+        cv.part(m, SKIN, thickness=2, rim=1, tint=r.tint_for(r.depth(hock[0], hock[2])))
+        # three toe claws fan out in front; foreshortened from the side
+        spread = r.width(4, 1)
+        claws(cv, [(tx - spread, ty), (tx + 1 - r.s * 3, ty + 1), (tx + spread, ty)], length=4)
+        claws(cv, [(ax - 2 * r.c, ay + 1)], length=3)  # heel spur
+    rig.custom(rig.depth(hock[0], hock[2]) + 0.5, foot)
+
+
+def arm(rig, side, shY, swing=0, raised=False):
+    """Long arm with forearm spikes and clawed hand. swing: forward offset of the hand."""
+    sx = side * 15
+    shoulder = (sx, shY, 0)
+    if raised:
+        elbow = (sx + side * 7, shY - 3, 4)
+        hand = (sx + side * 6, shY - 16, 6)
     else:
-        claws(cv, [(hx - 3, hy + 2), (hx, hy + 3), (hx + 3, hy + 2)], length=6)
+        elbow = (sx + side * 5, shY + 14, swing)
+        hand = (sx + side * 3, shY + 30, swing * 2)
+    rig.limb(shoulder, 5, elbow, 3.5, SKIN)
+
+    def forearm_spikes(r):
+        for k in (0.35, 0.65):
+            px = elbow[0] + (hand[0] - elbow[0]) * k
+            py = elbow[1] + (hand[1] - elbow[1]) * k
+            pz = elbow[2] + (hand[2] - elbow[2]) * k
+            bx, by = r.p((px, py, pz))
+            tx, ty = r.p((px + side * 6, py - 2, pz))
+            spike(r.cv, (bx, by - 1), (bx, by + 1), (tx, ty))
+    rig.limb(elbow, 3.5, hand, 3, SKIN, after=forearm_spikes)
+
+    def hand_part(r):
+        hx, hy = r.p(hand)
+        r.cv.part(r.cv.mask().circle(hx, hy, 3.5), SKIN, thickness=2, rim=1,
+                  tint=r.tint_for(r.depth(hand[0], hand[2])))
+        spread = max(1.5, r.width(3, 1))
+        if raised:
+            claws(r.cv, [(hx - spread, hy - 2), (hx, hy - 3), (hx + spread, hy - 2)], up=True, length=6)
+        else:
+            claws(r.cv, [(hx - spread, hy + 2), (hx, hy + 3), (hx + spread, hy + 2)], length=6)
+    rig.custom(rig.depth(hand[0], hand[2]) + 0.3, hand_part)
+    return hand
 
 
-def head(cv, hx, hy, open_mouth=False, hurt=False):
-    # neck
-    m = cv.mask().rect(hx - 4, hy + 6, 8, 7)
-    cv.part(m, SKIN, thickness=2, rim=0)
-    # skull + jaw
-    m = cv.mask()
-    m.oval(hx, hy, 10, 9)
-    m.poly([(hx - 9, hy + 2), (hx + 9, hy + 2), (hx + 6, hy + 11), (hx - 6, hy + 11)])
-    cv.part(m, SKIN, thickness=3, rim=2)
-    # heavy brow ridge casting shadow on the eyes
-    m = cv.mask().poly([(hx - 10, hy - 4), (hx + 10, hy - 4), (hx + 9, hy - 1), (hx - 9, hy - 1)])
-    cv.part(m, SKIN, thickness=1, rim=1, shadow=2)
-    # eye sockets + glow
-    for side in (-1, 1):
-        ex = hx + side * 4
-        cv.paint(cv.mask().oval(ex, hy + 1, 3, 2), SKIN[0])
-        cv.paint(cv.mask().oval(ex, hy + 1, 2, 1.5), EYE_RIM)
-        cv.paint(cv.mask().oval(ex, hy + 1, 1.5, 1), EYE_GLOW)
-        cv.set(ex + side, hy + 1, EYE_CORE)
-        if hurt:
-            cv.set(ex, hy, SKIN[0])
-            cv.set(ex + side, hy, SKIN[0])
-    # cheekbones
-    cv.set(hx - 7, hy + 4, SKIN[3])
-    cv.set(hx + 7, hy + 4, SKIN[3])
-    # nostrils
-    cv.set(hx - 1, hy + 4, SKIN[0])
-    cv.set(hx + 1, hy + 4, SKIN[0])
-    # mouth
-    mh = 4 if open_mouth else 1
-    cv.paint(cv.mask().rect(hx - 5, hy + 6, 11, mh + 1), MOUTH)
-    for mx in range(hx - 4, hx + 5, 2):
-        tall = 3 if mx in (hx - 4, hx + 4) else 2
-        col = TOOTH if tall == 3 else TOOTH_DARK
-        cv.paint(cv.mask().poly([(mx - 1, hy + 6), (mx + 1, hy + 6), (mx, hy + 6 + tall)]), col)
-    if open_mouth:
-        for mx in (hx - 3, hx, hx + 3):
-            cv.paint(cv.mask().poly([(mx - 1, hy + 7 + mh), (mx + 1, hy + 7 + mh), (mx, hy + 5 + mh)]), TOOTH_DARK)
-    # horns: sweep up and out with ridges
-    for side in (-1, 1):
-        bx = hx + side * 6
-        m = cv.mask().poly([(bx - 3, hy - 4), (bx + 3, hy - 4), (bx + side * 9, hy - 14),
-                            (bx + side * 13, hy - 25), (bx + side * 11, hy - 25), (bx + side * 6, hy - 14)])
-        cv.part(m, HORN, thickness=2, rim=1, shadow=1)
-        for k in range(4):
-            cv.set(bx + side * (4 + k * 2), hy - 7 - k * 3, HORN[1])
-            cv.set(bx + side * (5 + k * 2), hy - 7 - k * 3, HORN[1])
+def torso(rig, hipY, hunch=0):
+    def shoulders(m, r):
+        pts = [(-17, hipY - 24 + hunch, 0), (17, hipY - 24 + hunch, 0), (13, hipY - 6, 0), (-13, hipY - 6, 0)]
+        wide = r.width(17, 10)
+        sx0, _ = r.p((0, 0, 0))
+        m.poly([(sx0 - wide, hipY - 24 + hunch), (sx0 + wide, hipY - 24 + hunch),
+                (sx0 + r.width(13, 10), hipY - 6), (sx0 - r.width(13, 10), hipY - 6)])
+        px, py = r.p((0, hipY + 1, 0))
+        m.oval(px, py, r.width(8, 6), 6)
 
-
-def torso(cv, tx, hipY, hunch=0):
-    m = cv.mask()
-    m.oval(tx, hipY - 12, 13, 14)                      # ribcage
-    m.oval(tx, hipY + 1, 8, 6)                         # pelvis
-    m.poly([(tx - 17, hipY - 24 + hunch), (tx + 17, hipY - 24 + hunch),
-            (tx + 13, hipY - 6), (tx - 13, hipY - 6)])  # shoulders
-    cv.part(m, SKIN, thickness=3, rim=2)
-    # belly plate
-    m = cv.mask().oval(tx, hipY - 5, 6, 8)
-    cv.part(m, BELLY, thickness=2, rim=1, shadow=1)
-    for y in range(hipY - 10, hipY + 1, 4):
-        cv.set(tx, y, BELLY[1])
-        cv.set(tx - 3, y + 1, BELLY[1])
-        cv.set(tx + 3, y + 1, BELLY[1])
-    # pectorals
-    for side in (-1, 1):
-        m = cv.mask().oval(tx + side * 6, hipY - 17, 6, 4)
-        cv.part(m, SKIN, thickness=2, rim=1, shadow=1)
-    for y in range(hipY - 21, hipY - 11):
-        cv.set(tx, y, SKIN[1])
-    # ribs
-    for i in range(3):
-        y = hipY - 12 + i * 3
+    def details(r):
+        cv = r.cv
+        if r.facing_away:
+            # spine and shoulder blades
+            sx, _ = r.p((0, 0, 0))
+            for y in range(hipY - 22, hipY - 2, 3):
+                cv.set(int(sx), y, SKIN[1])
+            for side in (-1, 1):
+                bx, by = r.p((side * 6, hipY - 17, -6))
+                cv.part(cv.mask().oval(bx, by, r.width(5, 3), 4), SKIN, thickness=2, rim=1, shadow=1)
+            return
+        # belly plate on the front surface
+        bx, by = r.p((0, hipY - 5, 7))
+        cv.part(cv.mask().oval(bx, by, max(1.5, r.width(6, 2)), 8), BELLY, thickness=2, rim=1, shadow=1)
+        if r.c > 0.6:
+            for y in range(hipY - 10, hipY + 1, 4):
+                cv.set(int(bx), y, BELLY[1])
+                cv.set(int(bx) - 3, y + 1, BELLY[1])
+                cv.set(int(bx) + 3, y + 1, BELLY[1])
+        # pectorals
         for side in (-1, 1):
-            cv.set(tx + side * 11, y, SKIN[1])
-            cv.set(tx + side * 10, y + 1, SKIN[1])
-    # shoulder spikes (three per side, growing outward)
+            px, py = r.p((side * 6, hipY - 17, 6))
+            cv.part(cv.mask().oval(px, py, max(1.5, r.width(6, 3)), 4), SKIN, thickness=2, rim=1, shadow=1)
+        if r.c > 0.6:
+            sx, _ = r.p((0, 0, 8))
+            for y in range(hipY - 21, hipY - 11):
+                cv.set(int(sx), y, SKIN[1])
+        # ribs
+        for i in range(3):
+            y = hipY - 12 + i * 3
+            for side in (-1, 1):
+                rx, _ = r.p((side * 11, y, 3))
+                cv.set(int(rx), y, SKIN[1])
+                cv.set(int(rx) + (1 if side > 0 else -1) * int(round(r.c)), y + 1, SKIN[1])
+
+    rig.blob((0, hipY - 20, -6), 12, 8, 7, SKIN, thickness=3, rim=2)   # hunched upper back
+    rig.blob((0, hipY - 12, 0), 13, 14, 11, SKIN, thickness=3, rim=2, extra=shoulders, after=details)
+
+    # shoulder spikes, pointing outward
     for side in (-1, 1):
-        sx = tx + side * 15
         for k in range(3):
             base_y = hipY - 23 + hunch + k * 4
-            m = cv.mask().poly([(sx - 2, base_y + 3), (sx + 2, base_y + 3), (sx + side * 7, base_y - 3)])
-            cv.part(m, SPIKE, thickness=1, rim=1, shadow=1)
+            b = (side * 15, base_y + 3, 0)
+            t = (side * 22, base_y - 3, 0)
+            d = rig.depth(b[0], b[2]) + 1
+
+            def draw(r, b=b, t=t):
+                bx, by = r.p(b)
+                tx, ty = r.p(t)
+                if abs(tx - bx) < 2:
+                    tx = bx + (2 if t[0] > 0 else -2) * r.c
+                spike(r.cv, (bx - 2, by), (bx + 2, by), (tx, ty))
+            rig.custom(d, draw)
 
 
-def draw_standing(frame):
-    """Frames 0-6."""
+def head(rig, hy, open_mouth=False, hurt=False):
+    rig.limb((0, hy + 6, 0), 4, (0, hy + 12, 0), 4, SKIN, thickness=2, rim=0)
+
+    def jaw(m, r):
+        pts = [r.p((-9, hy + 2, 2)), r.p((9, hy + 2, 2)), r.p((6, hy + 11, 3)), r.p((-6, hy + 11, 3))]
+        m.poly(pts)
+
+    def face(r):
+        cv = r.cv
+        if r.facing_away:
+            return
+        # brow ridge
+        bl = r.p((-10, hy - 4, 5))
+        br = r.p((10, hy - 4, 5))
+        m = cv.mask().poly([bl, br, (br[0], hy - 1), (bl[0], hy - 1)])
+        cv.part(m, SKIN, thickness=1, rim=1, shadow=2)
+        # eyes
+        for side in (-1, 1):
+            ex, ey = r.p((side * 4, hy + 1, 9))
+            ex = int(round(ex))
+            w = max(1.5, r.width(3, 1))
+            cv.paint(cv.mask().oval(ex, ey, w, 2), SKIN[0])
+            cv.paint(cv.mask().oval(ex, ey, max(1, w - 1), 1.5), EYE_RIM)
+            cv.paint(cv.mask().oval(ex, ey, max(1, w - 1.5), 1), EYE_GLOW)
+            cv.set(ex + side * int(round(r.c)), int(ey), EYE_CORE)
+            if hurt:
+                cv.set(ex, int(ey) - 1, SKIN[0])
+        # nostrils, cheekbones
+        for side in (-1, 1):
+            nx, ny = r.p((side * 1, hy + 4, 10))
+            cv.set(int(round(nx)), int(ny), SKIN[0])
+            kx, ky = r.p((side * 7, hy + 4, 5))
+            cv.set(int(round(kx)), int(ky), SKIN[3])
+        # mouth
+        mh = 4 if open_mouth else 1
+        mx, my = r.p((0, hy + 6, 9))
+        mw = max(2, int(round(r.width(5, 1))))
+        cv.paint(cv.mask().rect(int(round(mx)) - mw, my, 2 * mw + 1, mh + 1), MOUTH)
+        for i, tx in enumerate(range(int(round(mx)) - mw + 1, int(round(mx)) + mw, 2)):
+            tall = 3 if i % 4 == 0 else 2
+            col = TOOTH if tall == 3 else TOOTH_DARK
+            cv.paint(cv.mask().poly([(tx - 1, my), (tx + 1, my), (tx, my + tall)]), col)
+        if open_mouth:
+            for tx in range(int(round(mx)) - mw + 2, int(round(mx)) + mw, 3):
+                cv.paint(cv.mask().poly([(tx - 1, my + mh + 1), (tx + 1, my + mh + 1), (tx, my + mh - 1)]), TOOTH_DARK)
+
+    rig.blob((0, hy, 0), 10, 9, 9, SKIN, thickness=3, rim=2, extra=jaw, after=face)
+
+    # horns: sweep up and out, slightly back
+    for side in (-1, 1):
+        pts = [(side * 3, hy - 4, 1), (side * 9, hy - 4, 1), (side * 15, hy - 14, -5), (side * 19, hy - 25, -11),
+               (side * 17, hy - 25, -11), (side * 12, hy - 14, -5)]
+        d = rig.depth(side * 9, 0) + 0.5
+
+        def draw(r, pts=pts, side=side):
+            proj = [r.p(pt) for pt in pts]
+            m = r.cv.mask().poly(proj)
+            r.cv.part(m, HORN, thickness=2, rim=1, shadow=1)
+            for k in range(4):
+                rx, ry = r.p((side * (10 + k * 2), hy - 7 - k * 3, 0))
+                r.cv.set(int(round(rx)), int(ry), HORN[1])
+        rig.custom(d, draw)
+
+
+def draw_standing(frame, turn):
     cv = Canvas(W, H)
+    rig = Rig(cv, turn, CX)
     attacking = frame in (4, 5)
     hurt = frame == 6
     phase = {1: 0, 2: 1, 3: 2}.get(frame, -1)
-    bob, lf, rf = 0, 0, 0
+    bob, lstep, rstep = 0, 0, 0
     if phase == 0:
-        lf, rf, bob = 6, -6, 1
+        lstep, rstep, bob = 6, -6, 1
     elif phase == 1:
-        lf, rf, bob = 0, 0, -1
+        lstep, rstep, bob = 0, 0, -1
     elif phase == 2:
-        lf, rf, bob = -6, 6, 1
+        lstep, rstep, bob = -6, 6, 1
 
     ground = 94
     hipY = 60 + bob + (1 if hurt else 0)
-    tx = 32 + (2 if attacking else (-2 if hurt else 0))
-    hipL, hipR = tx - 7, tx + 7
 
-    if lf >= rf:
-        leg(cv, hipR, hipY, ground, rf, back=True)
-        leg(cv, hipL, hipY, ground, lf, back=False)
-    else:
-        leg(cv, hipL, hipY, ground, lf, back=True)
-        leg(cv, hipR, hipY, ground, rf, back=False)
-
-    torso(cv, tx, hipY, hunch=1 if hurt else 0)
+    leg(rig, +1, hipY, ground, lstep)
+    leg(rig, -1, hipY, ground, rstep)
+    torso(rig, hipY, hunch=1 if hurt else 0)
 
     shY = hipY - 20
     if attacking:
-        arm(cv, tx - 14, shY, tx - 21, shY + 13, tx - 18, shY + 27, back=True)
-        arm(cv, tx + 14, shY, tx + 22, shY - 3, tx + 21, shY - 16, fingers_up=True)
-        fx, fy = tx + 21, shY - 27 if frame == 5 else shY - 23
+        arm(rig, +1, shY, swing=4)
+        hand = arm(rig, -1, shY, raised=True)
+        fx, fy = rig.p((hand[0], hand[1] - (11 if frame == 5 else 7), hand[2] + 2))
         r = 7 if frame == 5 else 5
-        for i, col in enumerate(FIRE[::-1]):
-            cv.paint(cv.mask().circle(fx, fy, r - i * 1.6), col)
-        for dx, dy in ((-r, -2), (r - 1, -3), (0, -r - 2), (-2, -r - 1)):
-            cv.set(fx + dx, fy + dy, FIRE[1])
-    else:
-        swingL, swingR = -lf // 2, -rf // 2
-        arm(cv, tx - 14, shY, tx - 20 + swingL, shY + 14, tx - 18 + swingL * 2, shY + 30, back=(lf < rf))
-        arm(cv, tx + 14, shY, tx + 20 + swingR, shY + 14, tx + 18 + swingR * 2, shY + 30, back=(rf < lf))
 
-    hx = tx + (2 if attacking else (-2 if hurt else 0))
-    head(cv, hx, hipY - 31 + (2 if hurt else 0), open_mouth=attacking or hurt, hurt=hurt)
+        def fireball(rg, fx=fx, fy=fy, r=r):
+            for i, col in enumerate(FIRE[::-1]):
+                rg.cv.paint(rg.cv.mask().circle(fx, fy, r - i * 1.6), col)
+            for dx, dy in ((-r, -2), (r - 1, -3), (0, -r - 2), (-2, -r - 1)):
+                rg.cv.set(int(fx + dx), int(fy + dy), FIRE[1])
+        rig.custom(rig.depth(hand[0], hand[2]) + 5, fireball)
+    else:
+        arm(rig, +1, shY, swing=-lstep // 2)
+        arm(rig, -1, shY, swing=-rstep // 2)
+
+    head(rig, hipY - 31 + (2 if hurt else 0), open_mouth=attacking or hurt, hurt=hurt)
+    rig.render()
 
     if hurt:
-        for (bx, by, r) in ((tx - 4, hipY - 14, 3), (tx + 3, hipY - 9, 2), (tx - 8, hipY - 20, 1)):
+        for (bx, by, r) in ((CX - 4, hipY - 14, 3), (CX + 3, hipY - 9, 2), (CX - 8, hipY - 20, 1)):
             cv.paint(cv.mask().circle(bx, by, r), BLOOD)
-        cv.set(tx - 6, hipY - 24, BLOOD_DARK)
-        cv.set(tx + 5, hipY - 15, BLOOD_DARK)
+        cv.set(CX - 6, hipY - 24, BLOOD_DARK)
+        cv.set(CX + 5, hipY - 15, BLOOD_DARK)
 
     cv.outline(OUTLINE)
     return cv
 
 
 def draw_recoil():
-    """Frame 7: knocked back, chest wound, arms flung out."""
-    cv = draw_standing(6)
+    """Frame 7: knocked back, chest wound."""
+    cv = draw_standing(6, 0)
     out = Canvas(W, H)
     for y in range(H):
         shift = -(H - y) // 10
@@ -241,7 +306,6 @@ def draw_falling():
     cv = Canvas(W, H)
     ground = 94
     hipY = 74
-    # legs folded under
     m = cv.mask().tapered(22, hipY, 6, 14, hipY + 10, 4)
     cv.part(m, SKIN, thickness=3, tint=BACK)
     m = cv.mask().tapered(14, hipY + 10, 4, 24, hipY + 17, 3)
@@ -251,7 +315,6 @@ def draw_falling():
     m = cv.mask().tapered(40, hipY + 12, 4, 30, hipY + 18, 3)
     cv.part(m, SKIN, thickness=2)
     claws(cv, [(24, ground - 2), (28, ground - 1), (32, ground - 2)], length=3)
-    # torso tilted ~40 degrees to the right
     m = cv.mask()
     m.oval(30, hipY - 6, 9, 7)
     m.tapered(28, hipY - 4, 9, 44, hipY - 22, 11)
@@ -259,14 +322,22 @@ def draw_falling():
     m = cv.mask().tapered(30, hipY - 6, 4, 38, hipY - 14, 5)
     cv.part(m, BELLY, thickness=2, rim=0, shadow=1)
     for k in range(3):
-        m = cv.mask().poly([(50 + k * 2, hipY - 30 + k * 3), (52 + k * 2, hipY - 28 + k * 3), (57 + k * 3, hipY - 34 + k * 3)])
-        cv.part(m, SPIKE, thickness=1, rim=0, shadow=1)
+        spike(cv, (50 + k * 2, hipY - 30 + k * 3), (52 + k * 2, hipY - 28 + k * 3), (57 + k * 3, hipY - 34 + k * 3))
     # arms: one braced toward the floor, one trailing
-    arm(cv, 40, hipY - 26, 46, hipY - 12, 50, hipY + 2, spikes=False)
-    arm(cv, 30, hipY - 20, 18, hipY - 16, 10, hipY - 4, back=True, spikes=False)
-    # head hanging forward-right
-    head(cv, 50, hipY - 36, open_mouth=True)
-    # wound
+    m = cv.mask().tapered(40, hipY - 26, 5, 46, hipY - 12, 3.5)
+    cv.part(m, SKIN, thickness=2)
+    m = cv.mask().tapered(46, hipY - 12, 3.5, 50, hipY + 2, 3)
+    cv.part(m, SKIN, thickness=2)
+    claws(cv, [(47, hipY + 4), (50, hipY + 5), (53, hipY + 4)], length=5)
+    m = cv.mask().tapered(30, hipY - 20, 5, 18, hipY - 16, 3.5)
+    cv.part(m, SKIN, thickness=2, tint=BACK)
+    m = cv.mask().tapered(18, hipY - 16, 3.5, 10, hipY - 4, 3)
+    cv.part(m, SKIN, thickness=2, tint=BACK)
+    claws(cv, [(7, hipY - 2), (10, hipY - 1), (13, hipY - 2)], length=5)
+    # head hanging forward-right (front-view head via the rig)
+    r = Rig(cv, 0, 50)
+    head(r, hipY - 36, open_mouth=True)
+    r.render()
     cv.paint(cv.mask().circle(38, hipY - 16, 4), BLOOD)
     cv.paint(cv.mask().circle(35, hipY - 12, 2), BLOOD_DARK)
     cv.set(41, hipY - 8, BLOOD)
@@ -281,26 +352,21 @@ def draw_corpse():
     ground = 92
     cv.paint(cv.mask().oval(32, ground, 26, 3), BLOOD_DARK)
     cv.paint(cv.mask().oval(30, ground - 1, 18, 2), BLOOD)
-    # legs (left), folded
     m = cv.mask().tapered(16, ground - 10, 5, 6, ground - 4, 4)
     cv.part(m, SKIN, thickness=2, tint=BACK)
     m = cv.mask().tapered(22, ground - 8, 5, 12, ground - 3, 4)
     cv.part(m, SKIN, thickness=2)
     claws(cv, [(3, ground - 2), (7, ground - 1)], length=3)
-    # torso lying, back spikes up
     m = cv.mask().oval(33, ground - 9, 16, 8)
     cv.part(m, SKIN, thickness=3, rim=1)
     for k in range(3):
         bx = 24 + k * 5
-        m = cv.mask().poly([(bx - 2, ground - 15), (bx + 2, ground - 15), (bx, ground - 21)])
-        cv.part(m, SPIKE, thickness=1, rim=1, shadow=1)
+        spike(cv, (bx - 2, ground - 15), (bx + 2, ground - 15), (bx, ground - 21))
     m = cv.mask().oval(30, ground - 5, 8, 4)
     cv.part(m, BELLY, thickness=2, rim=0, shadow=1)
-    # arm draped forward
     m = cv.mask().tapered(40, ground - 7, 3, 48, ground - 3, 2.5)
     cv.part(m, SKIN, thickness=2)
     claws(cv, [(48, ground - 3), (51, ground - 4), (54, ground - 3)], length=3)
-    # head on the right, cheek on the floor
     hx, hy = 50, ground - 11
     m = cv.mask().oval(hx, hy, 8, 7)
     cv.part(m, SKIN, thickness=3, rim=1)
@@ -319,8 +385,4 @@ def draw_corpse():
 
 
 def frames():
-    out = [draw_standing(f) for f in range(7)]
-    out.append(draw_recoil())
-    out.append(draw_falling())
-    out.append(draw_corpse())
-    return out
+    return turntable_frames(draw_standing, lambda: [draw_recoil(), draw_falling(), draw_corpse()])
