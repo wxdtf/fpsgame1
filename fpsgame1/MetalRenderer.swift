@@ -70,7 +70,8 @@ struct PostUniforms {
     var hitMarkerAlpha: Float
     var srcW: Int32
     var srcH: Int32
-    var pad0: Int32 = 0
+    /// Scene pixels per 480×300 "design pixel" (hit marker size etc.)
+    var pixelScale: Int32
     var pad1: Int32 = 0
 }
 
@@ -146,8 +147,8 @@ final class MetalRenderer {
         self.spritePipeline = sprite
         self.postPipeline = post
 
-        width = GameConstants.renderWidth
-        height = GameConstants.renderHeight
+        width = GameConstants.renderWidth * GameConstants.gpuRenderScale
+        height = GameConstants.renderHeight * GameConstants.gpuRenderScale
 
         let sceneDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
@@ -400,7 +401,8 @@ final class MetalRenderer {
             deathProgress: Float(effects.deathProgress),
             hitMarkerAlpha: Float(effects.hitMarkerAlpha),
             srcW: Int32(width),
-            srcH: Int32(height)
+            srcH: Int32(height),
+            pixelScale: Int32(GameConstants.gpuRenderScale)
         )
         memcpy(postBuffers[slot].contents(), &post, MemoryLayout<PostUniforms>.stride)
     }
@@ -511,10 +513,12 @@ final class MetalRenderer {
         let destH = height / 2
         var destX = (width - destW) / 2
         var destY = height - destH
+        // Bob amplitudes are tuned in 480×300 pixels; scale them with the resolution
         let bobMult = player.isMoving ? 1.0 : 0.0
         let sprintBob = player.isSprinting ? 2.0 : 1.0
-        destX += Int(sin(player.bobPhase) * 6 * bobMult * sprintBob)
-        destY += Int(abs(cos(player.bobPhase)) * 4 * bobMult * sprintBob)
+        let px = Double(GameConstants.gpuRenderScale)
+        destX += Int(sin(player.bobPhase) * 6 * px * bobMult * sprintBob)
+        destY += Int(abs(cos(player.bobPhase)) * 4 * px * bobMult * sprintBob)
 
         if player.weaponState.isSwitching {
             let p = player.weaponState.switchProgress

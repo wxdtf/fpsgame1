@@ -6,9 +6,13 @@
 import Foundation
 
 enum GameConstants {
-    // Internal render resolution (low-res for CPU speed, upscaled by GPU/SwiftUI)
+    // Internal render resolution of the CPU fallback (low-res for CPU speed)
     static let renderWidth = 480
     static let renderHeight = 300
+    /// The Metal path renders at renderWidth × gpuRenderScale (960×600 at 2): the
+    /// same field of view and pixel-art textures, twice the columns and rows, so a
+    /// 1920×1200 Retina window is an exact 2× upscale.
+    static let gpuRenderScale = 2
 
     // Window / display size (SwiftUI scales the render image up to this)
     static let windowWidth = 960

@@ -68,7 +68,7 @@ struct PostUniforms {
     float hitMarkerAlpha;
     int srcW;
     int srcH;
-    int pad0;
+    int pixelScale;             // scene pixels per 480x300 design pixel
     int pad1;
 };
 
@@ -165,9 +165,11 @@ kernel void floorCeilingKernel(
     float floorY = uniforms.playerY + rowDist * rayDirY0 + float(x) * fStepY;
 
     float3 lighting = getLighting(rowDist);
-    float floorShade = lighting.x;
     float fog = lighting.y;
-    float ceilShade = lighting.z;
+    // Torches light the floor and ceiling around them like they light the walls
+    float tb = torchLight(floorX, floorY, torches, uniforms.torchCount, uniforms.elapsedTime);
+    float floorShade = min(1.0f, lighting.x + tb * 0.35f);
+    float ceilShade = min(1.0f, lighting.z + tb * 0.25f);
 
     int tx = int(floorX * float(texSize)) & texMask;
     int ty = int(floorY * float(texSize)) & texMask;
@@ -429,14 +431,76 @@ kernel void spriteKernel(
 }
 
 // MARK: - Post kernel
-// One thread per drawable pixel: letterbox + nearest-neighbour upscale of the
-// low-res scene, then the screen effects in the same order as the CPU path
-// (muzzle tint, directional damage, pickup tint, berserk tint, death camera,
-// hit marker, fade to black).
+// One thread per drawable pixel: letterbox + upscale of the low-res scene, then
+// the screen effects in the same order as the CPU path (muzzle tint, directional
+// damage, pickup tint, berserk tint, death camera, hit marker, fade to black).
+//
+// The upscale is "sharp bilinear": each scene pixel stays a flat block, and only
+// the one-drawable-pixel-wide seam between blocks is blended. At an integer scale
+// with aligned pixels no seam falls inside a block, so it is exactly nearest
+// neighbour; at fractional scales it removes the uneven 2-px/3-px columns nearest
+// neighbour would produce without blurring the pixel art.
 inline float3 applyTint(float3 c, float4 tint) {
     float a = tint.w;
     if (a <= 0.0) return c;
     return min(float3(1.0), c * (1.0 - a) + (tint.xyz / 255.0) * a);
+}
+
+// The scene pixel that ends up at scene coordinate (sx, sy) after the death
+// camera, with the per-pixel effects that the CPU path applies before the death
+// camera (muzzle tint, directional damage, pickup tint, berserk tint).
+inline float3 scenePixel(texture2d<float, access::read> scene, constant PostUniforms& post,
+                         int sx, int sy) {
+    int srcW = post.srcW;
+    int srcH = post.srcH;
+    sx = clamp(sx, 0, srcW - 1);
+    sy = clamp(sy, 0, srcH - 1);
+
+    // Death camera: the scene slides down and tilts. Gather the source pixel that
+    // ends up at (sx, sy); pixels that slide in from outside are dark red.
+    const float3 darkRed = float3(40.0, 5.0, 5.0) / 255.0;
+    int fx = sx;
+    int fy = sy;
+    if (post.deathProgress > 0.0) {
+        int tiltPixels = int(post.deathProgress * 8.0 * float(post.pixelScale));
+        int rowTilt = tiltPixels * (srcW / 2 - abs(sy - srcH / 2)) / (srcH / 2);
+        if (rowTilt > 0) {
+            if (sx < srcW - rowTilt) fx = sx + rowTilt;
+            else return darkRed;
+        }
+        int shiftAmount = int(post.deathProgress * float(srcH) * 0.35);
+        if (shiftAmount > 0) {
+            if (sy >= shiftAmount) fy = sy - shiftAmount;
+            else return darkRed;
+        }
+    }
+
+    float3 c = scene.read(uint2(fx, fy)).rgb;
+
+    // Muzzle flash
+    c = applyTint(c, post.tints[0]);
+
+    // Directional damage: red gradient from the edge nearest the hit
+    if (post.damageIntensity > 0.0) {
+        float nx = float(fx) / float(srcW);
+        float ny = float(fy) / float(srcH);
+        float a = post.damageAngle;
+        const float fadeDepth = 0.20;
+        float edgeDist = 1.0;
+        if (a > 0.5 && a < 2.0) edgeDist = min(edgeDist, nx / fadeDepth);
+        if (a > 4.3 && a < 5.8) edgeDist = min(edgeDist, (1.0 - nx) / fadeDepth);
+        if (a > 2.0 && a < 4.3) edgeDist = min(edgeDist, ny / fadeDepth);
+        if (a < 0.5 || a > 5.8) edgeDist = min(edgeDist, (1.0 - ny) / fadeDepth);
+        float alpha = max(0.0, 1.0 - edgeDist) * post.damageIntensity;
+        if (alpha > 0.01) {
+            c = float3(min(1.0, c.r * (1.0 - alpha) + alpha), c.g * (1.0 - alpha), c.b * (1.0 - alpha));
+        }
+    }
+
+    // Pickup flash, berserk
+    c = applyTint(c, post.tints[1]);
+    c = applyTint(c, post.tints[2]);
+    return c;
 }
 
 kernel void postKernel(
@@ -456,77 +520,44 @@ kernel void postKernel(
     float scale = min(float(dstW) / float(srcW), float(dstH) / float(srcH));
     float offX = (float(dstW) - float(srcW) * scale) * 0.5;
     float offY = (float(dstH) - float(srcH) * scale) * 0.5;
-    int sx = int(floor((float(gid.x) - offX) / scale));
-    int sy = int(floor((float(gid.y) - offY) / scale));
+    float2 texel = (float2(gid) + 0.5 - float2(offX, offY)) / scale;  // scene pixel units
+    int sx = int(floor(texel.x));
+    int sy = int(floor(texel.y));
     if (sx < 0 || sx >= srcW || sy < 0 || sy >= srcH) {
         outTexture.write(float4(0.0, 0.0, 0.0, 1.0), gid);
         return;
     }
 
-    // Death camera: the scene slides down and tilts. Gather the source pixel that
-    // ends up at (sx, sy); pixels that slide in from outside are dark red.
-    const float3 darkRed = float3(40.0, 5.0, 5.0) / 255.0;
-    bool fromScene = true;
-    int fx = sx;
-    int fy = sy;
-    if (post.deathProgress > 0.0) {
-        int tiltPixels = int(post.deathProgress * 8.0);
-        int rowTilt = tiltPixels * (srcW / 2 - abs(sy - srcH / 2)) / (srcH / 2);
-        if (rowTilt > 0) {
-            if (sx < srcW - rowTilt) fx = sx + rowTilt;
-            else fromScene = false;
-        }
-        int shiftAmount = int(post.deathProgress * float(srcH) * 0.35);
-        if (shiftAmount > 0) {
-            if (sy >= shiftAmount) fy = sy - shiftAmount;
-            else fromScene = false;
-        }
-    }
-
-    float3 c;
-    if (fromScene) {
-        c = scene.read(uint2(fx, fy)).rgb;
-
-        // Muzzle flash
-        c = applyTint(c, post.tints[0]);
-
-        // Directional damage: red gradient from the edge nearest the hit
-        if (post.damageIntensity > 0.0) {
-            float nx = float(fx) / float(srcW);
-            float ny = float(fy) / float(srcH);
-            float a = post.damageAngle;
-            const float fadeDepth = 0.20;
-            float edgeDist = 1.0;
-            if (a > 0.5 && a < 2.0) edgeDist = min(edgeDist, nx / fadeDepth);
-            if (a > 4.3 && a < 5.8) edgeDist = min(edgeDist, (1.0 - nx) / fadeDepth);
-            if (a > 2.0 && a < 4.3) edgeDist = min(edgeDist, ny / fadeDepth);
-            if (a < 0.5 || a > 5.8) edgeDist = min(edgeDist, (1.0 - ny) / fadeDepth);
-            float alpha = max(0.0, 1.0 - edgeDist) * post.damageIntensity;
-            if (alpha > 0.01) {
-                c = float3(min(1.0, c.r * (1.0 - alpha) + alpha), c.g * (1.0 - alpha), c.b * (1.0 - alpha));
-            }
-        }
-
-        // Pickup flash, berserk
-        c = applyTint(c, post.tints[1]);
-        c = applyTint(c, post.tints[2]);
-    } else {
-        c = darkRed;
-    }
+    // Sharp bilinear: move the sample point toward the texel centre except within
+    // half a drawable pixel of a texel boundary, then blend the four neighbours.
+    float2 texelFloor = floor(texel);
+    float2 s = texel - texelFloor;
+    float regionRange = 0.5 - 0.5 / scale;
+    float2 centerDist = s - 0.5;
+    float2 f = (centerDist - clamp(centerDist, -regionRange, regionRange)) * scale + 0.5;
+    float2 p = texelFloor + f - 0.5;        // sample position between texel centres
+    float2 p0 = floor(p);
+    float2 t = p - p0;
+    int x0 = int(p0.x), y0 = int(p0.y);
+    float3 c00 = scenePixel(scene, post, x0, y0);
+    float3 c10 = scenePixel(scene, post, x0 + 1, y0);
+    float3 c01 = scenePixel(scene, post, x0, y0 + 1);
+    float3 c11 = scenePixel(scene, post, x0 + 1, y0 + 1);
+    float3 c = mix(mix(c00, c10, t.x), mix(c01, c11, t.x), t.y);
 
     // Death red tint, intensifying as the camera falls
     if (post.deathProgress > 0.0) {
-        float t = post.deathProgress * 0.5;
-        float inv = 1.0 - t;
-        c = float3(min(1.0, c.r * inv + (180.0 / 255.0) * t), c.g * inv * 0.7, c.b * inv * 0.5);
+        float tt = post.deathProgress * 0.5;
+        float inv = 1.0 - tt;
+        c = float3(min(1.0, c.r * inv + (180.0 / 255.0) * tt), c.g * inv * 0.7, c.b * inv * 0.5);
     }
 
-    // Hit marker: an X of single pixels at the centre
+    // Hit marker: an X at the centre, one design pixel thick, four design pixels long
     if (post.hitMarkerAlpha >= 0.5) {
-        int dx = sx - srcW / 2;
-        int dy = sy - srcH / 2;
-        int adx = abs(dx);
-        if (adx == abs(dy) && adx >= 1 && adx <= 4) {
+        int ps = max(1, post.pixelScale);
+        int adx = abs(sx - srcW / 2);
+        int ady = abs(sy - srcH / 2);
+        if (abs(adx - ady) < ps && adx >= ps && adx <= 4 * ps) {
             c = float3(1.0);
         }
     }
