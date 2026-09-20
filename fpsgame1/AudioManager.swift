@@ -141,8 +141,19 @@ final class AudioManager {
         ambientNode?.play() // Keep node ready
     }
 
+    /// Generated loops per level. Each track is 8–10 s of samples, so synthesising it on
+    /// every playBGM call (level start, and every unpause) was a noticeable stall.
+    private var bgmCache: [Int: AVAudioPCMBuffer] = [:]
+
+    private func bgmBuffer(level: Int) -> AVAudioPCMBuffer? {
+        if let cached = bgmCache[level] { return cached }
+        let buffer = generateBGM(level: level)
+        bgmCache[level] = buffer
+        return buffer
+    }
+
     func playBGM(level: Int) {
-        guard isSetup, let ambient = ambientNode, let buffer = generateBGM(level: level) else { return }
+        guard isSetup, let ambient = ambientNode, let buffer = bgmBuffer(level: level) else { return }
         ambient.stop()
         ambient.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
         ambient.play()

@@ -4,11 +4,17 @@
 //
 
 import Foundation
+import CoreGraphics
 
 final class DoomFace {
     // 48x48 pixel face with 42 frames (health-aware for all states)
     let size = 48
     var frames: [[UInt32]] = []
+    /// The same frames as ready-made images, so the HUD can blit one instead of
+    /// filling 2304 rectangles per redraw. Built on first use.
+    private(set) lazy var images: [CGImage?] = frames.map {
+        PixelBuffer.makeCGImage(pixels: $0, width: size, height: size)
+    }
 
     // Frame layout:
     //  0- 4: Center face × 5 health levels

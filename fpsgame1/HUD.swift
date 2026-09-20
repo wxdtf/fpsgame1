@@ -217,27 +217,13 @@ struct HUDView: View {
     }
 
     private var faceView: some View {
-        Canvas { context, size in
-            let pixels = viewModel.faceFramePixels
-            let faceSize = 48
-            let pixelW = size.width / CGFloat(faceSize)
-            let pixelH = size.height / CGFloat(faceSize)
-
-            for y in 0..<faceSize {
-                for x in 0..<faceSize {
-                    let color = pixels[y * faceSize + x]
-                    guard (color >> 24) != 0 else { continue }
-                    let r = Double((color >> 16) & 0xFF) / 255.0
-                    let g = Double((color >> 8) & 0xFF) / 255.0
-                    let b = Double(color & 0xFF) / 255.0
-                    let rect = CGRect(
-                        x: CGFloat(x) * pixelW,
-                        y: CGFloat(y) * pixelH,
-                        width: pixelW + 0.5,
-                        height: pixelH + 0.5
-                    )
-                    context.fill(Path(rect), with: .color(Color(red: r, green: g, blue: b)))
-                }
+        Group {
+            if let image = viewModel.faceFrameImage {
+                Image(decorative: image, scale: 1)
+                    .interpolation(.none)
+                    .resizable()
+            } else {
+                Color(white: 0.5)
             }
         }
         .background(Color(white: 0.2))
