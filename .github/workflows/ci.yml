@@ -61,9 +61,30 @@ jobs:
             -configuration Debug \
             -destination 'platform=macOS' \
             -derivedDataPath build/DerivedData \
+            -resultBundlePath build/TestResults.xcresult \
             -quiet \
             $NO_SIGNING \
             test
+
+      - name: Test summary
+        # -quiet hides the per-test output, so print the totals from the result
+        # bundle and fail if no tests were actually discovered and run.
+        run: |
+          xcrun xcresulttool get test-results summary \
+            --path build/TestResults.xcresult > build/test-summary.json
+          python3 - <<'EOF'
+          import json, sys
+          s = json.load(open("build/test-summary.json"))
+          total, passed, failed, skipped = (s.get(k, 0) for k in
+              ("totalTestCount", "passedTests", "failedTests", "skippedTests"))
+          print(f"Tests: {total} total, {passed} passed, {failed} failed, {skipped} skipped")
+          for t in s.get("testFailures", []):
+              print(f"  FAILED {t.get('testName')}: {t.get('failureText')}")
+          if total == 0:
+              sys.exit("No tests were executed; check the fpsgame1Tests target and scheme")
+          if failed:
+              sys.exit(1)
+          EOF
 
       - name: Build (Release, unsigned)
         # The Debug build above is -Onone; make sure the optimised build that
