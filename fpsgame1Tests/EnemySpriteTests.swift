@@ -2,7 +2,7 @@
 //  EnemySpriteTests.swift
 //  fpsgame1Tests
 //
-//  The baked enemy sprite sheets (tools/enemy_art) decode into complete frames.
+//  The baked enemy sprite sheets (tools/sprite_art) decode into complete frames.
 //
 
 import XCTest
