@@ -65,8 +65,10 @@ fpsgame1/
 ├── GameViewModel.swift    # Game state management
 ├── GameWorld.swift        # Level data, maps, and door logic
 ├── Renderer.swift         # Software raycaster
-├── MetalRenderer.swift    # Metal GPU rendering pipeline
-├── Raycaster.metal        # Metal shader for raycasting
+├── MetalRenderer.swift    # Metal GPU pipeline: four compute passes into an MTKView
+├── Raycaster.metal        # Compute kernels: floor/ceiling, walls, sprites, post effects
+├── SpriteAtlas.swift      # Every sprite frame packed into one GPU buffer
+├── PostEffects.swift      # Screen tints, damage/death effects, hit marker, fades
 ├── Player.swift           # Player state and movement
 ├── Character.swift        # Playable marines: portraits, loadouts, stats
 ├── Enemy.swift            # Enemy AI and behavior
@@ -136,8 +138,9 @@ specific Xcode, and `REPO_URL=git@github.com:wxdtf/fpsgame1.git` clones over SSH
 `.github/workflows/ci.yml` runs on every push to `main` and on every pull request:
 
 - **Validate level data** (Ubuntu): runs `tools/validate_levels.py`.
-- **Build macOS app** (macOS runner): selects the newest installed Xcode (the Metal 4
-  code path needs the macOS 26 SDK) and builds the `fpsgame1` target unsigned.
+- **Build and test macOS app** (macOS runner): selects the newest installed Xcode, runs
+  the `fpsgame1Tests` unit tests in Debug and then builds a Release configuration, all
+  unsigned.
 
 ### Roadmap
 

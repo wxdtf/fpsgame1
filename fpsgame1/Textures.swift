@@ -524,22 +524,23 @@ final class TextureAtlas {
         return min(max(0, index), exitPortalFrameCount - 1)
     }
 
-    /// Animate the exit portal texture — call each frame with elapsed time.
-    /// Returns true when the atlas changed (a new frame was copied in).
+    /// Pixels of one sampled frame of the portal loop, generated on first request
+    func exitPortalFramePixels(_ index: Int) -> [UInt32] {
+        let clamped = min(max(0, index), Self.exitPortalFrameCount - 1)
+        if let cached = portalFrames[clamped] { return cached }
+        let pixels = generateExitPortalTexture(time: Double(clamped) / Self.exitPortalFrameRate)
+        portalFrames[clamped] = pixels
+        return pixels
+    }
+
+    /// Animate the exit portal texture in the CPU atlas — call each frame with elapsed
+    /// time. Returns true when the atlas changed (a new frame was copied in).
     @discardableResult
     func updateExitPortal(time: Double) -> Bool {
         let index = Self.exitPortalFrame(at: time)
         guard index != portalFrameIndex else { return false }
         portalFrameIndex = index
-
-        let pixels: [UInt32]
-        if let cached = portalFrames[index] {
-            pixels = cached
-        } else {
-            pixels = generateExitPortalTexture(time: Double(index) / Self.exitPortalFrameRate)
-            portalFrames[index] = pixels
-        }
-        copyTexture(pixels, to: Self.exitPortal)
+        copyTexture(exitPortalFramePixels(index), to: Self.exitPortal)
         return true
     }
 

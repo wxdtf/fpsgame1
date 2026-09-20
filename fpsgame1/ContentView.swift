@@ -74,8 +74,11 @@ struct ContentView: View {
 
     private var gamePlayView: some View {
         ZStack {
-            // Game rendering output
-            if let image = viewModel.frameImage {
+            // Game rendering output: Metal presents straight into its own view
+            // (letterboxed by the post kernel); the CPU fallback hands SwiftUI an image.
+            if viewModel.usesMetalView {
+                MetalGameView(viewModel: viewModel)
+            } else if let image = viewModel.frameImage {
                 Image(nsImage: image)
                     .interpolation(.none)
                     .resizable()

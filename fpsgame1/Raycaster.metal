@@ -2,7 +2,13 @@
 //  Raycaster.metal
 //  testproject
 //
-//  Metal compute shader for GPU-accelerated raycasting (walls, floor, ceiling).
+//  Metal compute kernels for the whole frame:
+//    floorCeilingKernel  – textured floor and ceiling with distance fog
+//    wallKernel          – DDA raycast per column, writes the z-buffer
+//    spriteKernel        – enemies, items, projectiles, explosions and the weapon
+//                          overlay, z-tested against the walls
+//    postKernel          – screen tints, damage / death effects, hit marker and the
+//                          nearest-neighbour upscale into the drawable
 //
 
 #include <metal_stdlib>
@@ -29,6 +35,9 @@ struct RaycastUniforms {
     // Torch data
     int torchCount;
     float elapsedTime;
+    // Which sampled frame of the exit portal animation to draw (stored after the
+    // texCount base textures in the atlas)
+    int portalFrame;
 };
 
 struct TorchData {
@@ -36,11 +45,35 @@ struct TorchData {
     float y;
 };
 
-// Shade + fog in one step
-// Output format: BGRA8Unorm texture but CPU pixel buffer uses 0xAARRGGBB (byteOrder32Little + noneSkipFirst)
-// In memory: [B, G, R, A]. Metal float4 for bgra8Unorm: (B, G, R, A)
-// Our UInt32 color is 0xAARRGGBB — in little-endian memory: [BB, GG, RR, AA]
-// bgra8Unorm float4(b, g, r, a) → memory [b, g, r, a] — matches!
+// One sprite to composite. Must match SpriteInstance in MetalRenderer.swift.
+struct SpriteInstance {
+    int x0, y0, x1, y1;          // clipped screen rect, inclusive
+    int leftX, topY, sW, sH;     // unclipped origin and size, for texel mapping
+    int atlasOffset, srcW, srcH; // frame location in the sprite atlas
+    int flags;
+    float depth;                 // camera-space depth for the z test
+    float shade;
+    float fog;
+    float pad;
+};
+constant int kSpriteDepthTest = 1;
+constant int kSpriteShaded = 2;
+
+// Must match PostUniforms in MetalRenderer.swift
+struct PostUniforms {
+    float4 tints[4];            // rgb 0..255 + intensity; muzzle, pickup, berserk, fade
+    float damageIntensity;
+    float damageAngle;          // relative angle of the hit in [0, 2pi): 0 behind, pi front
+    float deathProgress;
+    float hitMarkerAlpha;
+    int srcW;
+    int srcH;
+    int pad0;
+    int pad1;
+};
+
+// Shade + fog in one step. The atlas stores 0xAARRGGBB; the texture is written as
+// ordinary RGBA (Metal swizzles to the bgra8Unorm storage itself).
 inline float4 shadeThenFog(uint color, float shade, float fog, float fogR, float fogG, float fogB) {
     float r = float((color >> 16) & 0xFF) * shade;
     float g = float((color >> 8) & 0xFF) * shade;
@@ -49,8 +82,7 @@ inline float4 shadeThenFog(uint color, float shade, float fog, float fogR, float
     r = r * fog + fogR * invFog;
     g = g * fog + fogG * invFog;
     b = b * fog + fogB * invFog;
-    // bgra8Unorm: float4 maps to (Blue, Green, Red, Alpha) in memory
-    return float4(b / 255.0, g / 255.0, r / 255.0, 1.0);
+    return float4(r / 255.0, g / 255.0, b / 255.0, 1.0);
 }
 
 // Distance-based shade/fog LUT equivalent
@@ -107,7 +139,7 @@ kernel void floorCeilingKernel(
     // Horizon rows (halfH and halfH-1) are not covered by floor/ceiling mirroring.
     // Fill them with fog color.
     if (y == halfH || y == halfH - 1) {
-        float4 fogColor = float4(uniforms.fogB / 255.0, uniforms.fogG / 255.0, uniforms.fogR / 255.0, 1.0);
+        float4 fogColor = float4(uniforms.fogR / 255.0, uniforms.fogG / 255.0, uniforms.fogB / 255.0, 1.0);
         outTexture.write(fogColor, uint2(x, y));
         return;
     }
@@ -322,7 +354,7 @@ kernel void wallKernel(
         case 3: texIndex = 2; break;  // tech
         case 4: texIndex = 3; break;  // door
         case 5: texIndex = 6; break;  // brickTorch
-        case 6: texIndex = 7; break;  // exitPortal
+        case 6: texIndex = uniforms.texCount + uniforms.portalFrame; break;  // exitPortal (animated)
         case 7: texIndex = 8; break;  // lockedDoorRed
         case 8: texIndex = 9; break;  // lockedDoorBlue
         case 9: texIndex = 10; break; // lockedDoorYellow
@@ -350,4 +382,157 @@ kernel void wallKernel(
                                      uniforms.fogR, uniforms.fogG, uniforms.fogB);
         outTexture.write(pixel, uint2(x, y));
     }
+}
+
+// MARK: - Sprite kernel
+// One thread per scene pixel. Sprites arrive sorted nearest first (the weapon
+// overlay at index 0), so the first opaque texel that passes the z test wins —
+// the same result as painting them back to front.
+kernel void spriteKernel(
+    texture2d<float, access::write> outTexture [[texture(0)]],
+    device const uint* spriteAtlas [[buffer(0)]],
+    device const RaycastUniforms& uniforms [[buffer(1)]],
+    device const SpriteInstance* sprites [[buffer(2)]],
+    constant int& spriteCount [[buffer(3)]],
+    device const float* zBuffer [[buffer(4)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    int x = int(gid.x);
+    int y = int(gid.y);
+    if (x >= uniforms.renderWidth || y >= uniforms.renderHeight) return;
+
+    float wallDepth = zBuffer[x];
+
+    for (int i = 0; i < spriteCount; i++) {
+        SpriteInstance s = sprites[i];
+        if (x < s.x0 || x > s.x1 || y < s.y0 || y > s.y1) continue;
+        if ((s.flags & kSpriteDepthTest) && s.depth >= wallDepth) continue;
+
+        int texX = (x - s.leftX) * s.srcW / s.sW;
+        int texY = (y - s.topY) * s.srcH / s.sH;
+        if (texX < 0 || texX >= s.srcW || texY < 0 || texY >= s.srcH) continue;
+
+        uint pixel = spriteAtlas[s.atlasOffset + texY * s.srcW + texX];
+        if ((pixel >> 24) == 0) continue;  // transparent
+
+        float4 color;
+        if (s.flags & kSpriteShaded) {
+            color = shadeThenFog(pixel, s.shade, s.fog, uniforms.fogR, uniforms.fogG, uniforms.fogB);
+        } else {
+            color = float4(float((pixel >> 16) & 0xFF) / 255.0,
+                           float((pixel >> 8) & 0xFF) / 255.0,
+                           float(pixel & 0xFF) / 255.0, 1.0);
+        }
+        outTexture.write(color, uint2(x, y));
+        return;
+    }
+}
+
+// MARK: - Post kernel
+// One thread per drawable pixel: letterbox + nearest-neighbour upscale of the
+// low-res scene, then the screen effects in the same order as the CPU path
+// (muzzle tint, directional damage, pickup tint, berserk tint, death camera,
+// hit marker, fade to black).
+inline float3 applyTint(float3 c, float4 tint) {
+    float a = tint.w;
+    if (a <= 0.0) return c;
+    return min(float3(1.0), c * (1.0 - a) + (tint.xyz / 255.0) * a);
+}
+
+kernel void postKernel(
+    texture2d<float, access::read> scene [[texture(0)]],
+    texture2d<float, access::write> outTexture [[texture(1)]],
+    constant PostUniforms& post [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    int dstW = int(outTexture.get_width());
+    int dstH = int(outTexture.get_height());
+    if (int(gid.x) >= dstW || int(gid.y) >= dstH) return;
+
+    int srcW = post.srcW;
+    int srcH = post.srcH;
+
+    // Aspect-fit the render target inside the drawable, black bars around it
+    float scale = min(float(dstW) / float(srcW), float(dstH) / float(srcH));
+    float offX = (float(dstW) - float(srcW) * scale) * 0.5;
+    float offY = (float(dstH) - float(srcH) * scale) * 0.5;
+    int sx = int(floor((float(gid.x) - offX) / scale));
+    int sy = int(floor((float(gid.y) - offY) / scale));
+    if (sx < 0 || sx >= srcW || sy < 0 || sy >= srcH) {
+        outTexture.write(float4(0.0, 0.0, 0.0, 1.0), gid);
+        return;
+    }
+
+    // Death camera: the scene slides down and tilts. Gather the source pixel that
+    // ends up at (sx, sy); pixels that slide in from outside are dark red.
+    const float3 darkRed = float3(40.0, 5.0, 5.0) / 255.0;
+    bool fromScene = true;
+    int fx = sx;
+    int fy = sy;
+    if (post.deathProgress > 0.0) {
+        int tiltPixels = int(post.deathProgress * 8.0);
+        int rowTilt = tiltPixels * (srcW / 2 - abs(sy - srcH / 2)) / (srcH / 2);
+        if (rowTilt > 0) {
+            if (sx < srcW - rowTilt) fx = sx + rowTilt;
+            else fromScene = false;
+        }
+        int shiftAmount = int(post.deathProgress * float(srcH) * 0.35);
+        if (shiftAmount > 0) {
+            if (sy >= shiftAmount) fy = sy - shiftAmount;
+            else fromScene = false;
+        }
+    }
+
+    float3 c;
+    if (fromScene) {
+        c = scene.read(uint2(fx, fy)).rgb;
+
+        // Muzzle flash
+        c = applyTint(c, post.tints[0]);
+
+        // Directional damage: red gradient from the edge nearest the hit
+        if (post.damageIntensity > 0.0) {
+            float nx = float(fx) / float(srcW);
+            float ny = float(fy) / float(srcH);
+            float a = post.damageAngle;
+            const float fadeDepth = 0.20;
+            float edgeDist = 1.0;
+            if (a > 0.5 && a < 2.0) edgeDist = min(edgeDist, nx / fadeDepth);
+            if (a > 4.3 && a < 5.8) edgeDist = min(edgeDist, (1.0 - nx) / fadeDepth);
+            if (a > 2.0 && a < 4.3) edgeDist = min(edgeDist, ny / fadeDepth);
+            if (a < 0.5 || a > 5.8) edgeDist = min(edgeDist, (1.0 - ny) / fadeDepth);
+            float alpha = max(0.0, 1.0 - edgeDist) * post.damageIntensity;
+            if (alpha > 0.01) {
+                c = float3(min(1.0, c.r * (1.0 - alpha) + alpha), c.g * (1.0 - alpha), c.b * (1.0 - alpha));
+            }
+        }
+
+        // Pickup flash, berserk
+        c = applyTint(c, post.tints[1]);
+        c = applyTint(c, post.tints[2]);
+    } else {
+        c = darkRed;
+    }
+
+    // Death red tint, intensifying as the camera falls
+    if (post.deathProgress > 0.0) {
+        float t = post.deathProgress * 0.5;
+        float inv = 1.0 - t;
+        c = float3(min(1.0, c.r * inv + (180.0 / 255.0) * t), c.g * inv * 0.7, c.b * inv * 0.5);
+    }
+
+    // Hit marker: an X of single pixels at the centre
+    if (post.hitMarkerAlpha >= 0.5) {
+        int dx = sx - srcW / 2;
+        int dy = sy - srcH / 2;
+        int adx = abs(dx);
+        if (adx == abs(dy) && adx >= 1 && adx <= 4) {
+            c = float3(1.0);
+        }
+    }
+
+    // Fade to black between levels
+    c = applyTint(c, post.tints[3]);
+
+    outTexture.write(float4(c, 1.0), gid);
 }

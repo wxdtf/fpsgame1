@@ -5,6 +5,48 @@
 
 import SwiftUI
 import AppKit
+import MetalKit
+
+/// Hosts the MTKView the Metal renderer presents into. The view's display link
+/// drives the game loop: every vsync it asks the view model to step the
+/// simulation and encode a frame.
+struct MetalGameView: NSViewRepresentable {
+    let viewModel: GameViewModel
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(viewModel: viewModel)
+    }
+
+    func makeNSView(context: Context) -> MTKView {
+        let view = MTKView(frame: .zero, device: viewModel.metalDevice)
+        view.colorPixelFormat = .bgra8Unorm
+        view.framebufferOnly = false        // the post kernel writes the drawable directly
+        view.preferredFramesPerSecond = 60
+        view.isPaused = false
+        view.enableSetNeedsDisplay = false
+        view.delegate = context.coordinator
+        return view
+    }
+
+    func updateNSView(_ nsView: MTKView, context: Context) {}
+
+    final class Coordinator: NSObject, MTKViewDelegate {
+        private let viewModel: GameViewModel
+
+        init(viewModel: GameViewModel) {
+            self.viewModel = viewModel
+        }
+
+        nonisolated func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+
+        nonisolated func draw(in view: MTKView) {
+            // MTKView calls this on the main thread
+            MainActor.assumeIsolated {
+                viewModel.renderMetalFrame(in: view)
+            }
+        }
+    }
+}
 
 class GameNSView: NSView {
     var inputManager: InputManager?
