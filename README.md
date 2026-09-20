@@ -47,7 +47,7 @@ A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Me
    git clone https://github.com/wxdtf/fpsgame1.git
    ```
 2. Open `fpsgame1.xcodeproj` in Xcode
-3. Build and Run (`⌘R`)
+3. Build and Run (`⌘R`), or run the unit tests (`⌘U`)
 
 ## Tech Stack
 

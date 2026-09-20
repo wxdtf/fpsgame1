@@ -13,6 +13,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Signing is disabled everywhere: CI has no certificate and nothing is distributed.
+env:
+  NO_SIGNING: >-
+    CODE_SIGNING_ALLOWED=NO
+    CODE_SIGNING_REQUIRED=NO
+    CODE_SIGN_IDENTITY=
+
 jobs:
   validate-levels:
     name: Validate level data
@@ -25,9 +32,9 @@ jobs:
         run: python3 tools/validate_levels.py --verbose
 
   build-macos:
-    name: Build macOS app
+    name: Build and test macOS app
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
 
@@ -42,17 +49,55 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks | grep -i macosx
 
-      - name: Build (Debug, unsigned)
-        # The project has no shared scheme, so build the target directly.
-        # Signing is disabled: CI has no certificate and the build is not distributed.
+      - name: Unit tests (Debug)
+        # The shared "fpsgame1" scheme builds the app and runs fpsgame1Tests,
+        # which cover the Foundation-only engine (world, navigation, player,
+        # weapons, enemies, level flow).
         run: |
           set -o pipefail
           xcodebuild \
             -project fpsgame1.xcodeproj \
-            -target fpsgame1 \
+            -scheme fpsgame1 \
             -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/TestResults.xcresult \
             -quiet \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
+            $NO_SIGNING \
+            test
+
+      - name: Test summary
+        # -quiet hides the per-test output, so print the totals from the result
+        # bundle and fail if no tests were actually discovered and run.
+        run: |
+          xcrun xcresulttool get test-results summary \
+            --path build/TestResults.xcresult > build/test-summary.json
+          python3 - <<'EOF'
+          import json, sys
+          s = json.load(open("build/test-summary.json"))
+          total, passed, failed, skipped = (s.get(k, 0) for k in
+              ("totalTestCount", "passedTests", "failedTests", "skippedTests"))
+          print(f"Tests: {total} total, {passed} passed, {failed} failed, {skipped} skipped")
+          for t in s.get("testFailures", []):
+              print(f"  FAILED {t.get('testName')}: {t.get('failureText')}")
+          if total == 0:
+              sys.exit("No tests were executed; check the fpsgame1Tests target and scheme")
+          if failed:
+              sys.exit(1)
+          EOF
+
+      - name: Build (Release, unsigned)
+        # The Debug build above is -Onone; make sure the optimised build that
+        # people actually play also compiles (whole-module optimisation can
+        # surface errors and warnings the Debug build does not).
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project fpsgame1.xcodeproj \
+            -scheme fpsgame1 \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            -quiet \
+            $NO_SIGNING \
             build

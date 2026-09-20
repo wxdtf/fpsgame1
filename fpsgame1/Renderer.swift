@@ -159,6 +159,14 @@ final class Renderer {
         let px = player.x, py = player.y
         let dTexSize = Double(texSize)
 
+        // Horizon rows (halfH and halfH-1) are not covered by the floor/ceiling mirroring
+        // below; fill them with the fog colour like the Metal path does.
+        let fogColor = PixelBuffer.makeColor(r: UInt8(Renderer.fogR), g: UInt8(Renderer.fogG), b: UInt8(Renderer.fogB))
+        for x in 0..<w {
+            buf[(halfH - 1) * w + x] = fogColor
+            buf[halfH * w + x] = fogColor
+        }
+
         // Use concurrent rendering for floor/ceiling rows (Apple Silicon multi-core)
         let rowCount = h - halfH - 1
         DispatchQueue.concurrentPerform(iterations: rowCount) { rowIdx in

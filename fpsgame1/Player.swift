@@ -8,17 +8,38 @@ import Foundation
 struct Player {
     var x: Double
     var y: Double
-    var angle: Double  // Radians
+    /// Radians. The camera vectors below are recomputed whenever this changes, so the
+    /// renderers (which read them per column and per sprite) never pay for trig.
+    var angle: Double {
+        didSet { updateCameraVectors() }
+    }
 
     var health: Int = GameConstants.maxHealth
     var armor: Int = 0
     var isDead: Bool { health <= 0 }
 
-    // Camera vectors
-    var dirX: Double { cos(angle) }
-    var dirY: Double { sin(angle) }
-    var planeX: Double { -sin(angle) * tan(GameConstants.fov / 2) }
-    var planeY: Double { cos(angle) * tan(GameConstants.fov / 2) }
+    // Camera vectors (cached from `angle`)
+    private(set) var dirX: Double = 1
+    private(set) var dirY: Double = 0
+    private(set) var planeX: Double = 0
+    private(set) var planeY: Double = 0
+    private static let planeScale = tan(GameConstants.fov / 2)
+
+    init(x: Double, y: Double, angle: Double) {
+        self.x = x
+        self.y = y
+        self.angle = angle
+        updateCameraVectors()
+    }
+
+    private mutating func updateCameraVectors() {
+        let c = cos(angle)
+        let s = sin(angle)
+        dirX = c
+        dirY = s
+        planeX = -s * Self.planeScale
+        planeY = c * Self.planeScale
+    }
 
     // Weapons
     var currentWeapon: WeaponType = .pistol

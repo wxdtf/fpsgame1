@@ -15,7 +15,7 @@ place to look before starting new work; update it when a milestone lands.
 | UI / feedback | Title, briefing (typewriter), pause, death, level and campaign summary screens. HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, screen shake, muzzle flash, death camera. |
 | Audio | Fully procedural: 14 sound effects and one looping BGM track per level (4 tracks), generated at runtime with AVAudioEngine. |
 | Assets | None on disk. Every texture, sprite, face frame and sound is generated procedurally in Swift. |
-| Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). GitHub Actions builds the app on a macOS runner and runs the validator on every push and PR. `tools/verify_local.sh` syncs a Mac clone to `main`, validates, builds with the newest Xcode and launches the app for a play-test. No unit tests yet. |
+| Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). GitHub Actions builds the app on a macOS runner and runs the validator on every push and PR. `tools/verify_local.sh` syncs a Mac clone to `main`, validates, builds with the newest Xcode and launches the app for a play-test. `fpsgame1Tests` (XCTest, hosted by the app) covers the Foundation-only engine: world/door solidity, navigation field, player movement and camera, weapons, enemy state machine, level flow and shipped level data. CI runs the tests in Debug and then builds Release. |
 
 ## Milestone 1 — Correctness & campaign completeness (done on this branch)
 
@@ -86,11 +86,12 @@ Found by reviewing the code and by running the new level validator:
 
 ## Milestone 4 — Engineering
 
-- [ ] Unit-test target covering the Foundation-only engine files (`GameEngine`, `GameWorld`,
-      `Enemy`, `Navigation`, `Player`, `Weapon`); the validator's reachability checks can
-      move into it.
-- [x] GitHub Actions workflow: build on a macOS runner and run the level validator
-      (`.github/workflows/ci.yml`).
+- [x] Unit-test target (`fpsgame1Tests`, shared scheme `fpsgame1`) covering `GameEngine`,
+      `GameWorld`, `Enemy`, `Navigation`, `Player`, `Weapon` and the shipped level data.
+      Run with `xcodebuild test -scheme fpsgame1 -destination 'platform=macOS'` or ⌘U.
+- [ ] Move the validator's reachability / key-gating checks into the test target.
+- [x] GitHub Actions workflow: level validator, unit tests (Debug) and a Release build on a
+      macOS runner (`.github/workflows/ci.yml`).
 - [x] Local post-merge verification (`tools/verify_local.sh`): sync to `origin/main` with
       backups, validate, build with the newest Xcode, launch or smoke-test.
 - [ ] Finish the Metal 4 path (argument tables) and move sprite compositing to the GPU.

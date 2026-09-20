@@ -271,12 +271,13 @@ final class MetalRenderer {
     func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], explosions: [Explosion] = [], elapsedTime: Double = 0) {
         currentTime = elapsedTime
 
-        // Animate exit portal texture and update GPU atlas
-        textures.updateExitPortal(time: elapsedTime)
-        let portalOffset = TextureAtlas.exitPortal * GameConstants.textureSize * GameConstants.textureSize
-        let portalBytes = GameConstants.textureSize * GameConstants.textureSize * MemoryLayout<UInt32>.size
-        memcpy(texAtlasBuffer.contents() + portalOffset * MemoryLayout<UInt32>.size,
-               textures.atlas + portalOffset, portalBytes)
+        // Animate exit portal texture; upload to the GPU atlas only when the frame changed
+        if textures.updateExitPortal(time: elapsedTime) {
+            let portalOffset = TextureAtlas.exitPortal * GameConstants.textureSize * GameConstants.textureSize
+            let portalBytes = GameConstants.textureSize * GameConstants.textureSize * MemoryLayout<UInt32>.size
+            memcpy(texAtlasBuffer.contents() + portalOffset * MemoryLayout<UInt32>.size,
+                   textures.atlas + portalOffset, portalBytes)
+        }
 
         // Update door open amounts
         updateDoorBuffer(world: world)

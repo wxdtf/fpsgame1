@@ -148,20 +148,19 @@ struct GameWorld {
         return false
     }
 
+    /// Whether a box of the given radius centred at (x, y) overlaps no solid tile.
+    /// Called dozens of times per frame, so the four corner checks are unrolled
+    /// rather than built into an array.
+    @inline(__always)
     func isPassable(x: Double, y: Double, radius: Double) -> Bool {
-        let checks = [
-            (x - radius, y - radius),
-            (x + radius, y - radius),
-            (x - radius, y + radius),
-            (x + radius, y + radius),
-        ]
-        for (cx, cy) in checks {
-            let tileX = Int(cx)
-            let tileY = Int(cy)
-            if isSolid(x: tileX, y: tileY) {
-                return false
-            }
-        }
+        let minX = Int(x - radius)
+        let maxX = Int(x + radius)
+        let minY = Int(y - radius)
+        let maxY = Int(y + radius)
+        if isSolid(x: minX, y: minY) { return false }
+        if minX != maxX && isSolid(x: maxX, y: minY) { return false }
+        if minY != maxY && isSolid(x: minX, y: maxY) { return false }
+        if minX != maxX && minY != maxY && isSolid(x: maxX, y: maxY) { return false }
         return true
     }
 

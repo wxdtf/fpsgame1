@@ -504,13 +504,43 @@ final class TextureAtlas {
         return generateExitPortalTexture(time: 0)
     }
 
-    /// Animate the exit portal texture — call each frame with elapsed time
-    func updateExitPortal(time: Double) {
-        let pixels = generateExitPortalTexture(time: time)
-        let offset = Self.exitPortal * pixelsPerTex
-        for i in 0..<min(pixels.count, pixelsPerTex) {
-            atlas[offset + i] = pixels[i]
+    // MARK: - Exit portal animation
+    //
+    // Every time term in generateExitPortalTexture(time:) has an angular frequency of
+    // 1.5, 2, 3, 4, 5 or 6 rad/s, so the whole animation repeats every 4π seconds.
+    // Instead of regenerating 4096 pixels of sin/cos every frame, the loop is sampled
+    // at a fixed rate and each sampled frame is generated once, the first time it is
+    // shown, then reused.
+    static let exitPortalPeriod: Double = 4 * .pi
+    static let exitPortalFrameRate: Double = 16
+    static let exitPortalFrameCount = Int((exitPortalPeriod * exitPortalFrameRate).rounded())
+    private var portalFrames: [[UInt32]?] = Array(repeating: nil, count: TextureAtlas.exitPortalFrameCount)
+    private var portalFrameIndex: Int = -1
+
+    /// Frame of the portal animation to show at `time`
+    static func exitPortalFrame(at time: Double) -> Int {
+        let phase = time.truncatingRemainder(dividingBy: exitPortalPeriod)
+        let index = Int(phase * exitPortalFrameRate)
+        return min(max(0, index), exitPortalFrameCount - 1)
+    }
+
+    /// Animate the exit portal texture — call each frame with elapsed time.
+    /// Returns true when the atlas changed (a new frame was copied in).
+    @discardableResult
+    func updateExitPortal(time: Double) -> Bool {
+        let index = Self.exitPortalFrame(at: time)
+        guard index != portalFrameIndex else { return false }
+        portalFrameIndex = index
+
+        let pixels: [UInt32]
+        if let cached = portalFrames[index] {
+            pixels = cached
+        } else {
+            pixels = generateExitPortalTexture(time: Double(index) / Self.exitPortalFrameRate)
+            portalFrames[index] = pixels
         }
+        copyTexture(pixels, to: Self.exitPortal)
+        return true
     }
 
     private func generateExitPortalTexture(time: Double) -> [UInt32] {

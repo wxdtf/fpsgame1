@@ -165,11 +165,12 @@ final class GameEngine {
     func nextLevel() {
         guard !isFinalLevel else { return }
         currentLevel += 1
-        // Keep player weapons and ammo
+        // Keep player weapons, ammo, armor and health (loadLevel builds a fresh Player)
         let savedWeapons = player.weapons
         let savedAmmo = player.ammo
         let savedWeapon = player.currentWeapon
         let savedArmor = player.armor
+        let savedHealth = player.health
 
         loadLevel(currentLevel)
 
@@ -178,8 +179,8 @@ final class GameEngine {
         player.currentWeapon = savedWeapon
         player.weaponState = WeaponState(type: savedWeapon)
         player.armor = savedArmor
-        // Restore some health between levels
-        player.health = min(GameConstants.maxHealth, player.health + 25)
+        // Carry health over and restore some of it between levels
+        player.health = min(GameConstants.maxHealth, savedHealth + 25)
         spawnInvincibilityTimer = 1.5
         state = .playing
     }

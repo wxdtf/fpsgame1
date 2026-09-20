@@ -228,14 +228,17 @@ final class PixelBuffer {
         }
     }
 
-    /// Zero-copy CGImage creation — the pixel data is referenced directly, not copied
+    /// Snapshot the buffer into a CGImage. The pixels are copied once (a ~0.5 MB memcpy)
+    /// so the next frame can overwrite `rawPixels` while SwiftUI is still drawing this image.
     func toCGImage() -> CGImage? {
-        let byteCount = count * 4
-        // Create a data provider that references our raw memory directly (no copy)
-        guard let provider = CGDataProvider(dataInfo: nil,
-                                            data: rawPixels,
-                                            size: byteCount,
-                                            releaseData: { _, _, _ in }) else {
+        Self.makeCGImage(pixels: rawPixels, width: width, height: height)
+    }
+
+    /// Build a CGImage from 0xAARRGGBB pixels, copying them so the image owns its storage
+    static func makeCGImage(pixels: UnsafePointer<UInt32>, width: Int, height: Int) -> CGImage? {
+        let byteCount = width * height * 4
+        guard let data = CFDataCreate(nil, UnsafeRawPointer(pixels).assumingMemoryBound(to: UInt8.self), byteCount),
+              let provider = CGDataProvider(data: data) else {
             return nil
         }
 
@@ -245,13 +248,21 @@ final class PixelBuffer {
             bitsPerComponent: 8,
             bitsPerPixel: 32,
             bytesPerRow: width * 4,
-            space: Self.colorSpace,
-            bitmapInfo: Self.bitmapInfo,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo,
             provider: provider,
             decode: nil,
             shouldInterpolate: false,
             intent: .defaultIntent
         )
+    }
+
+    /// Convenience for pixel arrays (sprite frames, face portraits)
+    static func makeCGImage(pixels: [UInt32], width: Int, height: Int) -> CGImage? {
+        guard pixels.count >= width * height else { return nil }
+        return pixels.withUnsafeBufferPointer { buf in
+            makeCGImage(pixels: buf.baseAddress!, width: width, height: height)
+        }
     }
 
     func toNSImage() -> NSImage? {

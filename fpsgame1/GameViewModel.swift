@@ -636,10 +636,9 @@ final class GameViewModel {
         }
     }
 
-    var faceFramePixels: [UInt32] {
-        guard let face = doomFace else {
-            return [UInt32](repeating: 0xFF808080, count: 48 * 48)
-        }
-        return face.frames[min(faceFrameIndex, face.frames.count - 1)]
+    /// Pre-rendered image of the current face frame (nil before a face exists)
+    var faceFrameImage: CGImage? {
+        guard let face = doomFace, !face.images.isEmpty else { return nil }
+        return face.images[min(faceFrameIndex, face.images.count - 1)]
     }
 }
