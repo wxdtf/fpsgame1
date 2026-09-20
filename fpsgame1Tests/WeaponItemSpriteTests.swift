@@ -86,11 +86,20 @@ final class WeaponItemSpriteTests: XCTestCase {
         XCTAssertNotEqual(a, b, "the portal animates")
         // every texel is opaque (it is a wall texture)
         XCTAssertTrue(a.allSatisfy { ($0 >> 24) == 0xFF })
-        // the frame rows are dark iron, the centre is bright
+        // the frame rows are dark iron, the EXIT lettering over the vortex is bright
+        // (top-left texel of the "E", see the letter layout in tools/sprite_art/portal.py)
         let size = GameConstants.textureSize
         let corner = a[0]
-        let centre = a[(size / 2) * size + size / 2 + 4]
+        let letter = a[(size / 2 - 3) * size + size / 2 - 9]
         XCTAssertLessThan(Int((corner >> 8) & 0xFF), 90)
-        XCTAssertGreaterThan(Int((centre >> 8) & 0xFF), 150)
+        XCTAssertGreaterThan(Int((letter >> 8) & 0xFF), 150)
+        // and the vortex as a whole glows green: mean green over the inner disc beats the frame
+        var vortexGreen = 0, vortexCount = 0
+        for y in 8..<(size - 8) {
+            for x in 8..<(size - 8) {
+                vortexGreen += Int((a[y * size + x] >> 8) & 0xFF); vortexCount += 1
+            }
+        }
+        XCTAssertGreaterThan(vortexGreen / vortexCount, 60)
     }
 }
