@@ -5,11 +5,17 @@
 
 import SwiftUI
 import AppKit
+import Metal
+import MetalKit
 
 @Observable
 @MainActor
 final class GameViewModel {
+    /// CPU fallback only: the last rendered frame for SwiftUI to display
     var frameImage: NSImage?
+    /// True once the Metal renderer is up; the game view then hosts an MTKView
+    /// whose display link drives the loop instead of the timer.
+    var usesMetalView: Bool = false
     var gameState: GameStateType = .menu
     var health: Int = 100
     var armor: Int = 0
@@ -71,6 +77,9 @@ final class GameViewModel {
     private var prevTabState: Bool = false
     private var levelTransitionTimer: Double = 0
     private var isTransitioningLevel: Bool = false
+    private var hasStarted: Bool = false
+
+    var metalDevice: MTLDevice? { metalRenderer?.device }
 
     func showBriefing() {
         // If no engine yet (first time from menu), create one to know the level
@@ -106,7 +115,7 @@ final class GameViewModel {
 
     /// Called when player presses enter on the briefing screen
     func startFromBriefing() {
-        if timer == nil {
+        if !hasStarted {
             // First start — need full initialization
             startGame()
         } else {
@@ -117,8 +126,11 @@ final class GameViewModel {
 
     func startGame() {
         guard let engine = gameEngine else { return }
+        hasStarted = true
         engine.state = .playing
         gameState = .playing  // Explicitly exit briefing state
+        levelTransitionOpacity = 0
+        isTransitioningLevel = false
 
         // Try Metal renderer first, fall back to CPU
         if metalRenderer == nil && cpuRenderer == nil {
@@ -130,6 +142,7 @@ final class GameViewModel {
                 cpuRenderer = Renderer()
                 useGPU = false
             }
+            usesMetalView = useGPU
         } else if useGPU, let mr = metalRenderer {
             mr.uploadWorldData(world: engine.world)
         }
@@ -147,7 +160,10 @@ final class GameViewModel {
         prevGameState = .playing
 
         updateUIState()
-        startGameLoop()
+        if !useGPU {
+            // The Metal path is driven by the MTKView's display link instead
+            startGameLoop()
+        }
         audio.playBGM(level: engine.currentLevel)
     }
 
@@ -252,8 +268,93 @@ final class GameViewModel {
         timer = t
     }
 
+    /// CPU fallback loop, one call per timer tick: step the game, then render into
+    /// the pixel buffer and hand SwiftUI the frame.
     private func gameLoop() {
-        guard let engine = gameEngine else { return }
+        guard let engine = gameEngine, let cr = cpuRenderer else { return }
+        guard tick() else { return }
+
+        autoreleasepool {
+            let angleOffset = applyScreenShake()
+            cr.render(
+                player: engine.player,
+                world: engine.world,
+                enemies: engine.enemies,
+                items: engine.items,
+                projectiles: engine.projectiles,
+                explosions: engine.explosions,
+                elapsedTime: engine.elapsedTime
+            )
+            engine.player.angle -= angleOffset
+            currentEffects().apply(to: cr.pixelBuffer)
+            frameImage = cr.pixelBuffer.toNSImage()
+        }
+    }
+
+    /// Metal path, one call per display-link callback from the MTKView: step the
+    /// game and encode a frame straight into the drawable.
+    func renderMetalFrame(in view: MTKView) {
+        guard let engine = gameEngine, let mr = metalRenderer else { return }
+        let shouldRender = tick()
+        // Keep presenting while paused so the drawable stays valid (resize, overlay)
+        guard shouldRender || engine.state == .paused else { return }
+
+        let angleOffset = applyScreenShake()
+        mr.draw(
+            in: view,
+            player: engine.player,
+            world: engine.world,
+            enemies: engine.enemies,
+            items: engine.items,
+            projectiles: engine.projectiles,
+            explosions: engine.explosions,
+            elapsedTime: engine.elapsedTime,
+            effects: currentEffects()
+        )
+        engine.player.angle -= angleOffset
+    }
+
+    /// Nudge the camera for screen shake; returns the offset so the caller can undo it
+    private func applyScreenShake() -> Double {
+        guard let engine = gameEngine, engine.screenShakeTimer > 0 else { return 0 }
+        let angleOffset = sin(engine.elapsedTime * 50) * engine.screenShakeIntensity * 0.03
+        engine.player.angle += angleOffset
+        return angleOffset
+    }
+
+    /// Screen effects for the frame about to be rendered
+    private func currentEffects() -> PostEffects {
+        guard let engine = gameEngine else { return PostEffects() }
+        var effects = PostEffects()
+        if engine.muzzleFlashTimer > 0 {
+            effects.muzzleFlash = min(0.3, engine.muzzleFlashTimer * 6.0)
+        }
+        if engine.damageFlashTimer > 0 {
+            effects.damageIntensity = min(0.5, engine.damageFlashTimer)
+            effects.damageDirection = engine.lastDamageDirection
+            effects.playerAngle = engine.player.angle
+        }
+        if engine.pickupFlashTimer > 0 {
+            effects.pickupFlash = min(0.2, engine.pickupFlashTimer * 0.5)
+        }
+        if engine.player.isBerserk {
+            effects.berserkTint = 0.08
+        }
+        if engine.deathAnimTimer > 0 && engine.player.isDead {
+            effects.deathProgress = 1.0 - engine.deathAnimTimer / 0.8
+        }
+        if engine.hitMarkerTimer > 0 {
+            effects.hitMarkerAlpha = min(1.0, engine.hitMarkerTimer * 6.0)
+        }
+        effects.fadeToBlack = levelTransitionOpacity
+        return effects
+    }
+
+    /// Advance the simulation by one frame: input, engine update, sound triggers,
+    /// state transitions and the HUD state. Returns whether a frame should be
+    /// rendered (playing, or the death camera is running).
+    private func tick() -> Bool {
+        guard let engine = gameEngine else { return false }
 
         let now = CACurrentMediaTime()
         var deltaTime = now - lastFrameTime
@@ -271,7 +372,7 @@ final class GameViewModel {
             togglePause()
             if engine.state == .paused {
                 updateUIState()
-                return
+                return false
             }
         }
 
@@ -403,11 +504,11 @@ final class GameViewModel {
             if levelTransitionTimer >= 0.8 {
                 isTransitioningLevel = false
                 updateUIState()
-                return
+                return false
             }
-            // Don't update game state to levelComplete until fade is done
-            // Keep rendering the last frame with increasing darkness
-            return
+            // Don't update game state to levelComplete until fade is done;
+            // keep rendering the last frame with increasing darkness
+            return true
         }
 
         // Always update UI state so SwiftUI sees state transitions (dead/levelComplete)
@@ -415,124 +516,7 @@ final class GameViewModel {
 
         // Allow rendering during death animation too
         let isDying = engine.deathAnimTimer > 0 && engine.state == .playing
-        guard engine.state == .playing || isDying else { return }
-
-        // Render
-        autoreleasepool {
-            // Screen shake: apply angle offset before rendering
-            var angleOffset = 0.0
-            if engine.screenShakeTimer > 0 {
-                angleOffset = sin(engine.elapsedTime * 50) * engine.screenShakeIntensity * 0.03
-                engine.player.angle += angleOffset
-            }
-
-            // Get the active pixel buffer (GPU or CPU path)
-            let activePixelBuffer: PixelBuffer
-
-            if useGPU, let mr = metalRenderer {
-                mr.render(
-                    player: engine.player,
-                    world: engine.world,
-                    enemies: engine.enemies,
-                    items: engine.items,
-                    projectiles: engine.projectiles,
-                    explosions: engine.explosions,
-                    elapsedTime: engine.elapsedTime
-                )
-                activePixelBuffer = mr.pixelBuffer
-            } else if let cr = cpuRenderer {
-                cr.render(
-                    player: engine.player,
-                    world: engine.world,
-                    enemies: engine.enemies,
-                    items: engine.items,
-                    projectiles: engine.projectiles,
-                    explosions: engine.explosions,
-                    elapsedTime: engine.elapsedTime
-                )
-                activePixelBuffer = cr.pixelBuffer
-            } else {
-                return
-            }
-
-            // Restore angle after rendering
-            if angleOffset != 0 {
-                engine.player.angle -= angleOffset
-            }
-
-            // Muzzle flash — brief white brightness
-            if engine.muzzleFlashTimer > 0 {
-                let intensity = min(0.3, engine.muzzleFlashTimer * 6.0)
-                activePixelBuffer.applyTint(
-                    color: PixelBuffer.makeColor(r: 255, g: 240, b: 200),
-                    intensity: intensity
-                )
-            }
-
-            // Directional damage indicator
-            if engine.damageFlashTimer > 0 {
-                let intensity = min(0.5, engine.damageFlashTimer)
-                activePixelBuffer.applyDirectionalDamage(
-                    intensity: intensity,
-                    direction: engine.lastDamageDirection,
-                    playerAngle: engine.player.angle
-                )
-            }
-
-            // Pickup flash
-            if engine.pickupFlashTimer > 0 {
-                let intensity = min(0.2, engine.pickupFlashTimer * 0.5)
-                activePixelBuffer.applyTint(
-                    color: PixelBuffer.makeColor(r: 255, g: 255, b: 0),
-                    intensity: intensity
-                )
-            }
-
-            // Berserk red tint
-            if engine.player.isBerserk {
-                activePixelBuffer.applyTint(
-                    color: PixelBuffer.makeColor(r: 200, g: 0, b: 0),
-                    intensity: 0.08
-                )
-            }
-
-            // Death screen effect
-            if engine.deathAnimTimer > 0 && engine.player.isDead {
-                let progress = 1.0 - engine.deathAnimTimer / 0.8
-                activePixelBuffer.applyDeathEffect(progress: progress)
-            }
-
-            // Hit marker (X at center of screen)
-            if engine.hitMarkerTimer > 0 {
-                let cx = GameConstants.renderWidth / 2
-                let cy = GameConstants.renderHeight / 2
-                let alpha = min(1.0, engine.hitMarkerTimer * 6.0)
-                let white = PixelBuffer.makeColor(r: 255, g: 255, b: 255)
-                let size = 4
-                for i in 1...size {
-                    let offset = i
-                    for (dx, dy) in [(offset, offset), (-offset, -offset), (offset, -offset), (-offset, offset)] {
-                        let px = cx + dx
-                        let py = cy + dy
-                        if px >= 0 && px < GameConstants.renderWidth && py >= 0 && py < GameConstants.renderHeight {
-                            if alpha >= 0.5 {
-                                activePixelBuffer.setPixel(x: px, y: py, color: white)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Level transition fade to black
-            if levelTransitionOpacity > 0 {
-                activePixelBuffer.applyTint(
-                    color: PixelBuffer.makeColor(r: 0, g: 0, b: 0),
-                    intensity: levelTransitionOpacity
-                )
-            }
-
-            frameImage = activePixelBuffer.toNSImage()
-        }
+        return engine.state == .playing || isDying
     }
 
     private func updateUIState() {

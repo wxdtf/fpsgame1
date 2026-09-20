@@ -39,8 +39,8 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Select newest Xcode
-        # MetalRenderer uses the Metal 4 API from the macOS 26 SDK, so the
-        # build needs Xcode 26 or newer. Pick the newest non-beta Xcode on the runner.
+        # The project is authored with Xcode 26 (objectVersion 77, synchronized
+        # groups). Pick the newest non-beta Xcode on the runner.
         run: |
           newest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1)
           if [ -n "$newest" ]; then

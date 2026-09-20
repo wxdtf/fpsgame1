@@ -7,7 +7,7 @@ place to look before starting new work; update it when a milestone lands.
 
 | Area | State |
 |------|-------|
-| Rendering | Complete. Metal 3 compute raycaster (walls, floor, ceiling, fog, torch light, sliding doors, animated exit portal) with a multi-core CPU fallback. Sprites, projectiles and the weapon overlay are composited on the CPU with z-buffer occlusion. |
+| Rendering | Complete. Four Metal compute passes per frame at 960×600 (floor/ceiling with torch light, DDA walls + z-buffer, z-tested sprites + weapon overlay, screen effects + sharp-bilinear pixel-art upscale) presented straight into an `MTKView` with three frames in flight and no CPU readback; the view's display link drives the game loop. A multi-core CPU raycaster with CPU sprite compositing remains as the fallback when Metal is unavailable. |
 | Player | Three playable marines (Sarge, Viper, Grimm) with distinct portraits, starting weapon, armor and speed. Movement with wall sliding and unstick, sprint, view bob, armor absorption, berserk, keys, 5 weapons (fist, pistol, shotgun, chaingun, rocket launcher with splash damage) with switch/fire animations. |
 | Enemies | 4 types (imp, soldier, demon, and the Baron of Hell boss). State machine: idle → patrol → chase → attack → hurt → dying → dead. Line-of-sight detection, projectile and melee attacks, tile-based pathfinding when out of sight, door opening, pain chance, wandering patrols. Bosses claw up close, throw plasma at range, keep advancing between attacks and show a HUD health bar. |
 | World | 32×32 tile maps, 11 tile types, regular + colour-locked doors with auto-close, damage floors (nukage), exit portal, per-level difficulty scaling. |
@@ -55,8 +55,6 @@ Found by reviewing the code and by running the new level validator:
 
 - Level ratings: "NIGHTMARE" is awarded for 100% kills slower than 2 minutes and
   "ULTRA-VIOLENCE" for faster. Intentional?
-- `MetalRenderer` has a Metal 4 path that is disabled until the shaders are ported to
-  argument tables; the Metal 3 path is what ships.
 - README requirements said macOS 14 but the project's deployment target is macOS 15.7.
 
 ## Milestone 2 — Content
@@ -94,7 +92,9 @@ Found by reviewing the code and by running the new level validator:
       macOS runner (`.github/workflows/ci.yml`).
 - [x] Local post-merge verification (`tools/verify_local.sh`): sync to `origin/main` with
       backups, validate, build with the newest Xcode, launch or smoke-test.
-- [ ] Finish the Metal 4 path (argument tables) and move sprite compositing to the GPU.
+- [x] Present through an `MTKView` instead of reading the GPU frame back into an `NSImage`,
+      and composite sprites, the weapon overlay and the screen effects on the GPU
+      (`spriteKernel`, `postKernel`); the unused Metal 4 scaffolding was removed.
 - [ ] Explore an iOS/iPadOS target (touch input, `UIImage` frame path).
 
 ## How to work on levels
