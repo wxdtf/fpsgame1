@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		2110CCD52F51383100AB3CFE /* fpsgame1.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = fpsgame1.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1F5B0012F60000000AB3CFE /* fpsgame1Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = fpsgame1Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,9 +17,31 @@
 			path = fpsgame1;
 			sourceTree = "<group>";
 		};
+		A1F5B0022F60000000AB3CFE /* fpsgame1Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = fpsgame1Tests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
+/* Begin PBXContainerItemProxy section */
+		A1F5B0062F60000000AB3CFE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2110CCCD2F51383000AB3CFE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2110CCD42F51383100AB3CFE;
+			remoteInfo = fpsgame1;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		A1F5B0032F60000000AB3CFE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2110CCD22F51383100AB3CFE /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				2110CCD72F51383100AB3CFE /* fpsgame1 */,
+				A1F5B0022F60000000AB3CFE /* fpsgame1Tests */,
 				2110CCD62F51383100AB3CFE /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				2110CCD52F51383100AB3CFE /* fpsgame1.app */,
+				A1F5B0012F60000000AB3CFE /* fpsgame1Tests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +95,29 @@
 			productReference = 2110CCD52F51383100AB3CFE /* fpsgame1.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A1F5B0082F60000000AB3CFE /* fpsgame1Tests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1F5B0092F60000000AB3CFE /* Build configuration list for PBXNativeTarget "fpsgame1Tests" */;
+			buildPhases = (
+				A1F5B0052F60000000AB3CFE /* Sources */,
+				A1F5B0032F60000000AB3CFE /* Frameworks */,
+				A1F5B0042F60000000AB3CFE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A1F5B0072F60000000AB3CFE /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A1F5B0022F60000000AB3CFE /* fpsgame1Tests */,
+			);
+			name = fpsgame1Tests;
+			packageProductDependencies = (
+			);
+			productName = fpsgame1Tests;
+			productReference = A1F5B0012F60000000AB3CFE /* fpsgame1Tests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +130,10 @@
 				TargetAttributes = {
 					2110CCD42F51383100AB3CFE = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					A1F5B0082F60000000AB3CFE = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 2110CCD42F51383100AB3CFE;
 					};
 				};
 			};
@@ -100,11 +152,19 @@
 			projectRoot = "";
 			targets = (
 				2110CCD42F51383100AB3CFE /* fpsgame1 */,
+				A1F5B0082F60000000AB3CFE /* fpsgame1Tests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		A1F5B0042F60000000AB3CFE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2110CCD32F51383100AB3CFE /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -115,6 +175,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A1F5B0052F60000000AB3CFE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2110CCD12F51383100AB3CFE /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -123,6 +190,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1F5B0072F60000000AB3CFE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2110CCD42F51383100AB3CFE /* fpsgame1 */;
+			targetProxy = A1F5B0062F60000000AB3CFE /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		2110CCDE2F51383200AB3CFE /* Debug */ = {
@@ -309,6 +384,46 @@
 			};
 			name = Release;
 		};
+		A1F5B00A2F60000000AB3CFE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.7;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = jack.fpsgame1Tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fpsgame1.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fpsgame1";
+			};
+			name = Debug;
+		};
+		A1F5B00B2F60000000AB3CFE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.7;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = jack.fpsgame1Tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fpsgame1.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fpsgame1";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -326,6 +441,15 @@
 			buildConfigurations = (
 				2110CCE12F51383200AB3CFE /* Debug */,
 				2110CCE22F51383200AB3CFE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1F5B0092F60000000AB3CFE /* Build configuration list for PBXNativeTarget "fpsgame1Tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1F5B00A2F60000000AB3CFE /* Debug */,
+				A1F5B00B2F60000000AB3CFE /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
