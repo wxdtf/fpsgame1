@@ -127,15 +127,20 @@ def head(rig, hy, roar=False, hurt=False):
 
     # big horns curling up, out and back
     for side in (-1, 1):
-        pts = [(side * 6, hy - 6, 2), (side * 12, hy - 6, 2), (side * 19, hy - 12, -6), (side * 24, hy - 24, -16),
-               (side * 20, hy - 32, -22), (side * 17, hy - 30, -22), (side * 20, hy - 23, -16), (side * 15, hy - 13, -6)]
+        # curl up, out and back; the tips stay inside the canvas (hy is 18 at rest)
+        pts = [(side * 6, hy - 6, 2), (side * 12, hy - 6, 2), (side * 19, hy - 10, -6), (side * 25, hy - 15, -14),
+               (side * 23, hy - 18, -22), (side * 19, hy - 17, -22), (side * 20, hy - 13, -14), (side * 15, hy - 10, -6)]
         d = rig.depth(side * 12, 0) + 0.5
 
         def draw(r, pts=pts, side=side):
             proj = [r.p(pt) for pt in pts]
-            r.cv.part(r.cv.mask().poly(proj), HORN, thickness=2, rim=2, shadow=1)
-            for k in range(4):
-                rx, ry = r.p((side * (13 + k * 2), hy - 8 - k * 4, 1 - k * 2))
+            m = r.cv.mask().poly(proj)
+            # thicken: union with copies nudged down and sideways so foreshortened views keep some body
+            m.union(r.cv.mask().poly([(x, y + 2) for x, y in proj]))
+            m.union(r.cv.mask().poly([(x + side, y + 1) for x, y in proj]))
+            r.cv.part(m, HORN, thickness=2, rim=2, shadow=1)
+            for k in range(3):
+                rx, ry = r.p((side * (14 + k * 3), hy - 8 - k * 3, 0 - k * 5))
                 r.cv.set(int(round(rx)), int(ry), HORN[1])
                 r.cv.set(int(round(rx)) + side, int(ry), HORN[1])
         rig.custom(d, draw)
