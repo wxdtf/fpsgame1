@@ -1,4 +1,4 @@
-"""Soldier: a possessed marine — torn olive fatigues, dead-white eyes, rifle held across the chest.
+"""Soldier: a WWII German infantryman — feldgrau tunic, M35 steel helmet, jackboots, Y-straps, Kar98k.
 
 Canvas 64x96, turntable rig. Frames per view: 0 idle, 1-3 walk, 4-5 firing, 6 hurt;
 front only: 7 recoil, 8 falling, 9 corpse.
@@ -9,20 +9,22 @@ from pixelart import Canvas, Rig, ramp, rgb, turntable_frames
 W, H = 64, 96
 CX = 32
 
-UNIFORM = ramp(rgb(84, 92, 58), deep=rgb(26, 30, 18), hi=rgb(150, 158, 112))
-UNIFORM_DK = ramp(rgb(62, 68, 44), deep=rgb(20, 24, 14), hi=rgb(120, 128, 92))
-SKIN = ramp(rgb(176, 168, 140), deep=rgb(58, 54, 46), hi=rgb(230, 224, 200))   # corpse-pale
-HELMET = ramp(rgb(66, 74, 54), deep=rgb(18, 22, 14), hi=rgb(128, 138, 106))
-BOOT = ramp(rgb(52, 40, 28), deep=rgb(14, 10, 6), hi=rgb(104, 84, 62))
-GUN = ramp(rgb(58, 58, 64), deep=rgb(14, 14, 18), hi=rgb(130, 132, 140))
-WOOD = ramp(rgb(96, 62, 34), deep=rgb(34, 20, 10), hi=rgb(168, 118, 74))
-BELT = ramp(rgb(70, 52, 30), deep=rgb(24, 16, 8), hi=rgb(128, 100, 62))
-PACK = ramp(rgb(74, 66, 44), deep=rgb(24, 20, 12), hi=rgb(130, 120, 84))
-BUCKLE = rgb(180, 160, 60)
-EYE = rgb(232, 236, 220)
-EYE_SOCKET = rgb(30, 26, 26)
-MOUTH = rgb(50, 20, 20)
-TOOTH = rgb(214, 204, 180)
+UNIFORM = ramp(rgb(96, 108, 92), deep=rgb(30, 36, 30), hi=rgb(164, 176, 156))      # feldgrau tunic
+TROUSER = ramp(rgb(78, 84, 80), deep=rgb(24, 26, 26), hi=rgb(140, 146, 140))      # stone-grey trousers
+UNIFORM_DK = ramp(rgb(58, 66, 56), deep=rgb(18, 22, 18), hi=rgb(112, 122, 104))    # collar, cuffs, pockets
+SKIN = ramp(rgb(214, 172, 140), deep=rgb(84, 56, 42), hi=rgb(248, 218, 190))
+HELMET = ramp(rgb(84, 92, 82), deep=rgb(24, 28, 26), hi=rgb(150, 158, 146))       # M35 steel, feldgrau
+BOOT = ramp(rgb(34, 30, 30), deep=rgb(8, 6, 6), hi=rgb(88, 82, 84))                # black jackboots
+GUN = ramp(rgb(52, 52, 58), deep=rgb(12, 12, 16), hi=rgb(124, 126, 134))
+WOOD = ramp(rgb(120, 74, 38), deep=rgb(44, 24, 10), hi=rgb(192, 134, 82))          # Kar98k stock
+BELT = ramp(rgb(40, 30, 24), deep=rgb(10, 6, 4), hi=rgb(96, 78, 64))               # black leather belt, Y-straps
+PACK = ramp(rgb(70, 74, 62), deep=rgb(22, 24, 18), hi=rgb(126, 132, 112))           # bread bag / canister
+BUCKLE = rgb(196, 190, 170)
+EYE = rgb(58, 70, 90)
+EYE_WHITE = rgb(236, 232, 224)
+EYE_SOCKET = rgb(96, 70, 56)
+MOUTH = rgb(70, 30, 30)
+TOOTH = rgb(230, 222, 206)
 BLOOD = rgb(150, 12, 10)
 BLOOD_DARK = rgb(96, 6, 6)
 OUTLINE = rgb(14, 16, 10)
@@ -35,22 +37,27 @@ def rifle2d(cv, x0, y0, x1, y1, muzzle_flash=False, tint=None):
     def at(t):
         return x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
     length = max(abs(x1 - x0), abs(y1 - y0))
-    m = cv.mask().tapered(*at(0.0), 4.5, *at(0.3), 3.5)
+    # butt and stock run three quarters of the length
+    m = cv.mask().tapered(*at(0.0), 4.5, *at(0.12), 4)
     cv.part(m, WOOD, thickness=2, rim=1, tint=tint)
-    m = cv.mask().tapered(*at(0.28), 4, *at(0.6), 3.5)
-    cv.part(m, GUN, thickness=2, rim=1, tint=tint)
-    m = cv.mask().tapered(*at(0.58), 2.5, *at(1.0), 2)
+    m = cv.mask().tapered(*at(0.1), 3.5, *at(0.72), 3)
+    cv.part(m, WOOD, thickness=2, rim=1, tint=tint)
+    # receiver on top of the stock, exposed barrel at the muzzle
+    m = cv.mask().tapered(*at(0.3), 2.2, *at(0.5), 2.2)
+    cv.part(m, GUN, thickness=1, rim=1, tint=tint)
+    m = cv.mask().tapered(*at(0.7), 1.8, *at(1.0), 1.4)
     cv.part(m, GUN, thickness=1, rim=1, tint=tint)
     if length > 14:
-        sx, sy = at(0.92)
-        cv.set(int(sx), int(sy) - 3, GUN[3])
+        # front sight, barrel band, bolt handle, trigger guard
+        sx, sy = at(0.95)
         cv.set(int(sx), int(sy) - 2, GUN[3])
-        mx, my = at(0.45)
-        m = cv.mask().poly([(mx - 3, my + 2), (mx + 4, my + 1), (mx + 6, my + 10), (mx - 1, my + 11)])
-        cv.part(m, GUN, thickness=1, rim=1, shadow=1, tint=tint)
-        for t in (0.35, 0.45, 0.55):
-            hx, hy = at(t)
-            cv.set(int(hx), int(hy) - 3, GUN[4])
+        bx, by = at(0.7)
+        cv.set(int(bx), int(by) - 3, GUN[1])
+        cv.set(int(bx), int(by) + 3, GUN[1])
+        kx, ky = at(0.42)
+        cv.paint(cv.mask().rect(int(kx), int(ky) + 2, 2, 3), GUN[3])
+        tx, ty = at(0.33)
+        cv.paint(cv.mask().rect(int(tx), int(ty) + 3, 4, 2), GUN[1])
     if muzzle_flash:
         for i, col in enumerate(FLASH[::-1]):
             cv.paint(cv.mask().circle(x1 + 2, y1 - 1, 5 - i * 1.5), col)
@@ -64,17 +71,24 @@ def leg(rig, side, hipY, ground, step):
     hip = (hx, hipY, 0)
     knee = (hx + sway * 0.5, hipY + 14 - abs(step) // 4, 1 + step * 0.5)
     ankle = (hx + sway, ground - 8 - (2 if step > 0 else 0), step)
-    rig.limb(hip, 6, knee, 5, UNIFORM, thickness=3)
-    rig.limb(knee, 5, ankle, 4, UNIFORM)
-    rig.blob(knee, 4, 3, 4, UNIFORM_DK, thickness=1, rim=1, shadow=1)
-    # boot: short and wide from the front, long from the side
+    rig.limb(hip, 6.5, knee, 5.5, TROUSER, thickness=3)
+    # jackboot: shaft from just below the knee, then the foot
+    shaft_top = (knee[0], knee[1] + 3, knee[2])
+    rig.limb(shaft_top, 5, ankle, 4.2, BOOT, thickness=2, rim=1)
     rig.blob((ankle[0], ankle[1] + 5, ankle[2] + 3), 4.5, 3.5, 6.5, BOOT, thickness=2, rim=1)
     rig.blob((ankle[0], ankle[1] + 1, ankle[2]), 4, 3, 4, BOOT, thickness=2, rim=1, shadow=1)
 
+    def boot_top(r):
+        bx, by = r.p(shaft_top)
+        r.cv.paint(r.cv.mask().rect(bx - r.width(5, 4), by - 1, 2 * r.width(5, 4) + 1, 1), BOOT[4])
+    rig.custom(rig.depth(shaft_top[0], shaft_top[2]) + 0.2, boot_top)
+
 
 def arm(rig, side, shoulder, elbow, hand):
-    rig.limb(shoulder, 5, elbow, 4, UNIFORM)
-    rig.limb(elbow, 4, hand, 3, UNIFORM)
+    rig.limb(shoulder, 5.5, elbow, 4.5, UNIFORM)
+    rig.limb(elbow, 4.5, hand, 3.5, UNIFORM)
+    cuff = (elbow[0] + (hand[0] - elbow[0]) * 0.8, elbow[1] + (hand[1] - elbow[1]) * 0.8, elbow[2] + (hand[2] - elbow[2]) * 0.8)
+    rig.blob(cuff, 3.8, 2, 3.8, UNIFORM_DK, thickness=1, rim=1, shadow=1)
     rig.blob(hand, 3, 3, 3, SKIN, thickness=2, rim=1)
 
 
@@ -91,36 +105,55 @@ def torso(rig, hipY):
         m = cv.mask().rect(bx - r.width(12, 7), hipY - 3, 2 * r.width(12, 7) + 1, 3)
         cv.part(m, BELT, thickness=1, rim=1, shadow=1)
         if r.facing_away:
-            # back: pack straps
+            # back: the Y-strap junction and the gas-mask canister on the belt
             for side in (-1, 1):
                 ax, _ = r.p((side * 8, 0, -6))
                 for y in range(hipY - 26, hipY - 6):
                     cv.set(int(round(ax)), y, BELT[1])
+            jx, _ = r.p((0, 0, -6))
+            for y in range(hipY - 20, hipY - 6):
+                cv.set(int(round(jx)), y, BELT[1])
             return
         kx, _ = r.p((0, 0, 7))
         cv.paint(cv.mask().rect(int(round(kx)) - 1, hipY - 3, 3, 3), BUCKLE)
-        # chest rig straps + pouches on the front surface
+        cv.set(int(round(kx)), hipY - 2, BELT[1])
+        # Y-straps: two vertical leather straps over the chest down to the belt
         for side in (-1, 1):
-            tx, _ = r.p((side * 12, 0, 6))
-            bx2, _ = r.p((side * 2, 0, 7))
-            m = cv.mask().poly([(tx, hipY - 26), (tx + side * 2 * r.c, hipY - 26), (bx2 + side * 2 * r.c, hipY - 4), (bx2, hipY - 4)])
+            tx, _ = r.p((side * 8, 0, 7))
+            bx2, _ = r.p((side * 7, 0, 7))
+            m = cv.mask().poly([(tx, hipY - 26), (tx + side * r.c, hipY - 26), (bx2 + side * r.c, hipY - 4), (bx2, hipY - 4)])
             cv.part(m, BELT, thickness=1, rim=0, shadow=1)
+        # breast pockets with button flaps, button row down the front
         for side in (-1, 1):
-            px, _ = r.p((side * 6, 0, 8))
+            px, _ = r.p((side * 5, 0, 8))
             w = max(1, int(round(r.width(3, 1))))
-            m = cv.mask().rect(int(round(px)) - w, hipY - 14, 2 * w + 1, 6)
+            m = cv.mask().rect(int(round(px)) - w, hipY - 20, 2 * w + 1, 6)
             cv.part(m, UNIFORM_DK, thickness=1, rim=1, shadow=1)
-            cv.set(int(round(px)), hipY - 12, BUCKLE)
-        for (dx, dy) in ((-7, -20), (6, -8), (-3, -6), (9, -18)):
-            gx, _ = r.p((dx, 0, 7))
-            cv.set(int(round(gx)), hipY + dy, UNIFORM[0])
-        # collar
+            cv.set(int(round(px)), hipY - 19, BUCKLE)
+        if r.c > 0.6:
+            for y in range(hipY - 23, hipY - 5, 4):
+                cv.set(int(round(kx)), y, BUCKLE)
+        # ammo pouches either side of the buckle
+        for side in (-1, 1):
+            px, _ = r.p((side * 8, 0, 8))
+            w = max(1, int(round(r.width(3, 1))))
+            m = cv.mask().rect(int(round(px)) - w, hipY - 6, 2 * w + 1, 5)
+            cv.part(m, BELT, thickness=1, rim=1, shadow=1)
+        # collar with tabs, shoulder boards
         cx0, _ = r.p((0, 0, 6))
-        m = cv.mask().poly([(cx0 - r.width(6, 2), hipY - 28), (cx0 + r.width(6, 2), hipY - 28),
-                            (cx0 + r.width(4, 2), hipY - 24), (cx0 - r.width(4, 2), hipY - 24)])
+        m = cv.mask().poly([(cx0 - r.width(7, 2), hipY - 28), (cx0 + r.width(7, 2), hipY - 28),
+                            (cx0 + r.width(5, 2), hipY - 23), (cx0 - r.width(5, 2), hipY - 23)])
         cv.part(m, UNIFORM_DK, thickness=1, rim=0)
+        for side in (-1, 1):
+            tx, _ = r.p((side * 4, 0, 7))
+            cv.set(int(round(tx)), hipY - 26, BUCKLE)
+            sx, _ = r.p((side * 13, 0, 2))
+            cv.paint(cv.mask().rect(int(round(sx)) - 1, hipY - 27, 3, 1), UNIFORM_DK[1])
 
-    rig.blob((0, hipY - 18, -7), 9, 8, 4, PACK, thickness=2, rim=1)   # small pack on the back
+    # bread bag and canteen on the left hip, gas-mask canister across the back
+    rig.blob((9, hipY - 2, -6), 5, 5, 3, PACK, thickness=2, rim=1)
+    rig.blob((-9, hipY - 2, -6), 4, 4, 3, PACK, thickness=2, rim=1)
+    rig.limb((-6, hipY - 22, -8), 3, (6, hipY - 8, -8), 3, PACK, thickness=1, rim=1)
     rig.blob((0, hipY - 14, 0), 14, 13, 8, UNIFORM, thickness=3, rim=2, extra=shoulders, after=details)
 
 
@@ -137,10 +170,15 @@ def head(rig, hy, hurt=False, yell=False):
         for side in (-1, 1):
             ex, ey = r.p((side * 4, hy, 8))
             ex, ey = int(round(ex)), int(ey)
-            cv.paint(cv.mask().oval(ex, ey, max(1.5, r.width(2.8, 1)), 2.2), EYE_SOCKET)
+            w = max(1.5, r.width(2.8, 1))
+            cv.paint(cv.mask().oval(ex, ey - 2, w, 1.0), EYE_SOCKET)   # brow shadow
             if not hurt:
+                cv.paint(cv.mask().oval(ex, ey, w, 1.6), EYE_WHITE)
                 cv.set(ex, ey, EYE)
+                cv.set(ex, ey + 1, EYE)
                 cv.set(ex + side * int(round(r.c)), ey, EYE)
+            else:
+                cv.paint(cv.mask().rect(ex - 1, ey, 3, 1), EYE_SOCKET)
         for side in (-1, 1):
             kx, _ = r.p((side * 6, 0, 5))
             cv.set(int(round(kx)), hy + 4, SKIN[1])
@@ -153,27 +191,54 @@ def head(rig, hy, hurt=False, yell=False):
         mx = int(round(mx))
         mw = max(1, int(round(r.width(4, 1))))
         if yell or hurt:
-            cv.paint(cv.mask().rect(mx - mw, hy + 6, 2 * mw + 1, 4), MOUTH)
+            cv.paint(cv.mask().rect(mx - mw, hy + 6, 2 * mw + 1, 3), MOUTH)
             for tx in range(mx - mw + 1, mx + mw, 2):
                 cv.set(tx, hy + 6, TOOTH)
-                cv.set(tx, hy + 9, TOOTH)
         else:
-            cv.paint(cv.mask().rect(mx - mw, hy + 7, 2 * mw + 1, 1), MOUTH)
-            for tx in range(mx - mw + 2, mx + mw, 2):
-                cv.set(tx, hy + 7, TOOTH)
+            cv.paint(cv.mask().rect(mx - mw + 1, hy + 7, 2 * mw - 1, 1), MOUTH)
+        # stubble shadow on the jaw
+        for tx in range(mx - mw, mx + mw + 1, 2):
+            cv.set(tx, hy + 9, SKIN[1])
 
     rig.blob((0, hy + 1, 0), 8, 9, 8, SKIN, thickness=3, rim=2, extra=jaw, after=face)
 
     def helmet(r):
         cv = r.cv
         hx, _ = r.p((0, 0, 0))
-        w = r.width(10, 10)
+        w = r.width(9.5, 10)
         m = cv.mask()
-        m.oval(hx, hy - 3, w, 8)
+        m.oval(hx, hy - 3, w, 8)                       # dome
         m.rect(hx - w, hy - 3, 2 * w + 1, 3)
-        m.subtract(cv.mask().rect(hx - w - 1, hy, 2 * w + 3, 14))
+        # brim: flares out and drops lower at the sides and the back (the neck guard)
+        fx, _ = r.p((0, 0, 11))          # front edge of the brim
+        bx, _ = r.p((0, 0, -12))         # back edge
+        left, right = min(fx, bx), max(fx, bx)
+        front_drop = hy + 1
+        back_drop = hy + 4
+        if abs(r.s) < 0.2:
+            # front/back view: brim is a shallow skirt that hangs lower at the sides
+            skirt = cv.mask().poly([(hx - w - 1, hy - 1), (hx + w + 1, hy - 1), (hx + w + 2, hy + 3), (hx + w - 2, hy + 2),
+                                    (hx - w + 2, hy + 2), (hx - w - 2, hy + 3)])
+            m.union(skirt)
+        else:
+            # turned views: brim slopes down toward the back
+            y_at_left = back_drop if bx < fx else front_drop
+            y_at_right = front_drop if bx < fx else back_drop
+            skirt = cv.mask().poly([(left - 1, hy - 1), (right + 1, hy - 1), (right + 2, y_at_right),
+                                    (right - 2, y_at_right + 1), (left + 2, y_at_left + 1), (left - 2, y_at_left)])
+            m.union(skirt)
+        m.subtract(cv.mask().rect(hx - w - 3, hy + 5, 2 * w + 7, 14))
+        # keep the face clear in front views: cut the skirt back over the face
+        if r.c > 0.2:
+            face_cut = cv.mask().rect(hx - r.width(6, 2), hy, 2 * r.width(6, 2) + 1, 6)
+            m.subtract(face_cut)
         cv.part(m, HELMET, thickness=3, rim=2, shadow=2)
-        cv.paint(cv.mask().rect(hx - w, hy - 1, 2 * w + 1, 1), HELMET[0])
+        # rim highlight along the brim edge
+        cv.paint(cv.mask().rect(hx - w, hy - 1, 2 * w + 1, 1), HELMET[3])
+        # side vent lug
+        vx, _ = r.p((8, 0, 2))
+        cv.set(int(round(vx)), hy - 4, HELMET[0])
+        # chin strap
         if not r.facing_away:
             for side in (-1, 1):
                 sx, _ = r.p((side * 8, 0, 3))
@@ -211,15 +276,15 @@ def draw_standing(frame, turn):
 
     if firing:
         # rifle shouldered, pointing straight ahead (+z)
-        stock = (-3, shY + 10, 5)
-        muzzle = (-5, shY + 2, 30)
+        stock = (-2, shY + 11, 3)
+        muzzle = (-5, shY + 2, 36)
         arm(rig, +1, (14, shY, 0), (12, shY + 12, 4), (2, shY + 12, 8))
         arm(rig, -1, (-14, shY, 0), (-12, shY + 10, 6), (-4, shY + 6, 14))
     else:
         # held across the chest, muzzle up-left
         sw = -lstep // 3
-        stock = (10, shY + 20, 7)
-        muzzle = (-16, shY + 4, 9)
+        stock = (12, shY + 24, 7)
+        muzzle = (-20, shY + 2, 9)
         arm(rig, +1, (14, shY, 0), (14, shY + 12, sw), (6, shY + 9, 7))
         arm(rig, -1, (-14, shY, 0), (-14, shY + 12, sw), (-6, shY + 16, 7))
 
@@ -266,15 +331,15 @@ def draw_falling():
     cv = Canvas(W, H)
     hipY = 76
     m = cv.mask().tapered(30, hipY, 6, 18, hipY + 6, 5)
-    cv.part(m, UNIFORM, thickness=3, tint=BACK)
-    m = cv.mask().tapered(18, hipY + 6, 5, 8, hipY + 12, 4)
-    cv.part(m, UNIFORM, thickness=2, tint=BACK)
+    cv.part(m, TROUSER, thickness=3, tint=BACK)
+    m = cv.mask().tapered(18, hipY + 6, 5, 6, hipY + 12, 4)
+    cv.part(m, BOOT, thickness=2, tint=BACK)
     m = cv.mask().rect(2, hipY + 9, 9, 7)
     cv.part(m, BOOT, thickness=2, tint=BACK)
     m = cv.mask().tapered(36, hipY + 2, 6, 24, hipY + 10, 5)
-    cv.part(m, UNIFORM, thickness=3)
-    m = cv.mask().tapered(24, hipY + 10, 5, 14, hipY + 14, 4)
-    cv.part(m, UNIFORM, thickness=2)
+    cv.part(m, TROUSER, thickness=3)
+    m = cv.mask().tapered(24, hipY + 10, 5, 12, hipY + 14, 4)
+    cv.part(m, BOOT, thickness=2)
     m = cv.mask().rect(7, hipY + 12, 9, 6)
     cv.part(m, BOOT, thickness=2)
     m = cv.mask().tapered(34, hipY - 2, 11, 50, hipY - 22, 12)
@@ -303,12 +368,16 @@ def draw_corpse():
     ground = 92
     cv.paint(cv.mask().oval(34, ground, 26, 3), BLOOD_DARK)
     cv.paint(cv.mask().oval(36, ground - 1, 16, 2), BLOOD)
-    m = cv.mask().tapered(26, ground - 8, 5, 12, ground - 6, 4)
-    cv.part(m, UNIFORM, thickness=2, tint=BACK)
+    m = cv.mask().tapered(26, ground - 8, 5, 18, ground - 7, 4)
+    cv.part(m, TROUSER, thickness=2, tint=BACK)
+    m = cv.mask().tapered(18, ground - 7, 4, 10, ground - 6, 4)
+    cv.part(m, BOOT, thickness=2, tint=BACK)
     m = cv.mask().rect(4, ground - 10, 9, 6)
     cv.part(m, BOOT, thickness=2, tint=BACK)
-    m = cv.mask().tapered(28, ground - 6, 5, 14, ground - 3, 4)
-    cv.part(m, UNIFORM, thickness=2)
+    m = cv.mask().tapered(28, ground - 6, 5, 20, ground - 4, 4)
+    cv.part(m, TROUSER, thickness=2)
+    m = cv.mask().tapered(20, ground - 4, 4, 12, ground - 3, 4)
+    cv.part(m, BOOT, thickness=2)
     m = cv.mask().rect(6, ground - 6, 9, 5)
     cv.part(m, BOOT, thickness=2)
     m = cv.mask().oval(36, ground - 8, 14, 7)
@@ -325,6 +394,7 @@ def draw_corpse():
     cv.paint(cv.mask().rect(hx - 4, hy - 1, 3, 1), EYE_SOCKET)
     cv.paint(cv.mask().rect(hx + 1, hy - 1, 3, 1), EYE_SOCKET)
     cv.paint(cv.mask().rect(hx - 2, hy + 2, 5, 1), MOUTH)
+    cv.paint(cv.mask().oval(hx, hy - 5, 6, 2), SKIN[1])   # cropped hair
     m = cv.mask().oval(14, ground - 18, 8, 5)
     m.subtract(cv.mask().rect(0, ground - 24, 30, 6))
     cv.part(m, HELMET, thickness=2, rim=1)
