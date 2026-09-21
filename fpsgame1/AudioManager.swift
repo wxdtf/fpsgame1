@@ -53,6 +53,15 @@ final class AudioManager {
         }
     }
 
+    // MARK: - Volume
+
+    /// Master gain on the mixer, effect gain on the pooled nodes, music gain on the loop node
+    func setVolumes(master: Float, sfx: Float, music: Float) {
+        audioEngine?.mainMixerNode.outputVolume = max(0, min(1, master))
+        for node in playerNodes { node.volume = max(0, min(1, sfx)) }
+        ambientNode?.volume = max(0, min(1, music))
+    }
+
     // MARK: - Public Sound Methods
 
     func playGunshot() {

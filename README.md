@@ -24,16 +24,22 @@ A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Me
 
 ## Controls
 
-| Key | Action |
-|-----|--------|
-| `W A S D` | Move |
-| `Mouse / Trackpad` | Look around |
-| `Space / Click` | Shoot |
-| `E` | Open doors |
-| `1 2 3 4 5` | Switch weapons |
-| `Shift` | Sprint |
-| `Tab` | Toggle minimap |
-| `ESC` | Pause |
+| Keyboard / mouse | Controller | Action |
+|-----|-----|--------|
+| `W A S D` | Left stick | Move |
+| `Mouse / Trackpad` | Right stick | Look around |
+| `Space / Click` | `RT` / `A` | Shoot |
+| `E` | `X` / `B` | Open doors |
+| `1 2 3 4 5` | `LB` / `RB` | Switch weapons |
+| `Shift` | `L3` / `LT` | Sprint |
+| `Tab` | Options | Toggle minimap |
+| `ESC` | Menu | Pause menu (resume, settings, quit to title) |
+
+On the title screen `← →` pick the skill level (four DOOM difficulties, remembered between
+launches) and `S` opens the settings: mouse sensitivity, master / effects / music volume and
+whether the minimap starts visible. Menus take the keyboard, the mouse or a controller
+(`A` confirm, `B` back, d-pad or left stick to move). The level summary shows your best time
+and kill percentage for that level and skill.
 
 ## Requirements
 
@@ -80,8 +86,10 @@ fpsgame1/
 ├── HUD.swift              # Heads-up display overlay
 ├── DoomFace.swift         # Expressive face indicator
 ├── AudioManager.swift     # Sound effects system
-├── InputManager.swift     # Keyboard and mouse input
-├── MenuViews.swift        # Title, death, victory, briefing screens
+├── Settings.swift         # Difficulty, options menu persistence, per-level records
+├── SettingsViews.swift    # Settings screen and pause menu
+├── InputManager.swift     # Keyboard, mouse and game controller input
+├── MenuViews.swift        # Title (skill select), death, victory, briefing screens
 ├── Item.swift             # Pickup item definitions
 ├── PixelBuffer.swift      # Pixel buffer for software rendering
 ├── Constants.swift        # Game configuration values

@@ -12,7 +12,7 @@ place to look before starting new work; update it when a milestone lands.
 | Enemies | 4 types (imp, WWII German infantryman, demon, and the Baron of Hell boss). State machine: idle → patrol → chase → attack → hurt → dying → dead. Line-of-sight detection, projectile and melee attacks, tile-based pathfinding when out of sight, door opening, pain chance, wandering patrols. Bosses claw up close, throw plasma at range, keep advancing between attacks and show a HUD health bar. |
 | World | 32×32 tile maps, 11 tile types, regular + colour-locked doors with auto-close, damage floors (nukage), exit portal, per-level difficulty scaling. |
 | Campaign | 4 levels with briefings, data-driven mission objectives (item retrieval / extermination), level summary with rating, campaign summary, death restarts the current level. |
-| UI / feedback | Title, briefing (typewriter), pause, death, level and campaign summary screens. HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, blood spurts on hits, screen shake, muzzle flash, death camera. |
+| UI / feedback | Title with skill select, settings menu, briefing (typewriter), pause menu, death, level and campaign summary screens (with per-level records). HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, blood spurts on hits, screen shake, muzzle flash, death camera. |
 | Audio | Fully procedural: 14 sound effects and one looping BGM track per level (4 tracks), generated at runtime with AVAudioEngine. |
 | Assets | None on disk. Wall/floor textures, face frames, projectiles, explosions and sounds are generated procedurally in Swift; the exit portal is procedural too, designed in `tools/sprite_art/portal.py` and ported line for line. The four enemy sheets, the five first-person weapons (240×150) and the 14 pickups (32×32) are pixel art authored in `tools/sprite_art/*.py` on a turntable rig (a 3D part layout projected to the front, 3/4, side, back-3/4 and back views, with automatic cel shading, contact shadows and outlines; 41 frames each at 64×96 / 96×96 / 96×120, with a six-frame death sequence choreographed per enemy) and baked into `BakedSpriteData.swift` as run-length strings by `tools/sprite_art/build.py`. Enemies show the rotation that matches their facing relative to the player, mirrored for the other side. |
 | Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). GitHub Actions builds the app on a macOS runner and runs the validator on every push and PR. `tools/verify_local.sh` syncs a Mac clone to `main`, validates, builds with the newest Xcode and launches the app for a play-test. `fpsgame1Tests` (XCTest, hosted by the app) covers the Foundation-only engine: world/door solidity, navigation field, player movement and camera, weapons, enemy state machine, level flow and shipped level data. CI runs the tests in Debug and then builds Release. |
@@ -76,11 +76,16 @@ Found by reviewing the code and by running the new level validator:
 
 ## Milestone 3 — Meta & UX
 
-- [ ] Difficulty selection on the title screen (feeds the existing multipliers).
-- [ ] Persist best time / kill % per level (UserDefaults) and show them on the summary.
-- [ ] Settings: mouse sensitivity, master/SFX/music volume, minimap default.
-- [ ] Pause menu with "quit to title"; keyboard navigation helper for menus.
-- [ ] Game controller support (GCController).
+- [x] Difficulty selection on the title screen (← →): four DOOM skills scaling enemy health,
+      enemy projectile speed and damage taken, on top of the per-level ramp; remembered.
+- [x] Persist best time / kill % per level and skill (UserDefaults, `RecordStore`) and show
+      them on the level summary with a NEW RECORD flag.
+- [x] Settings menu (S on the title, or from the pause menu): mouse sensitivity, master/SFX/
+      music volume, minimap default; keyboard, mouse and controller driven.
+- [x] Pause menu: RESUME / SETTINGS / QUIT TO TITLE, ↑↓ Enter, Esc resumes.
+- [x] Game controller support (GCController): left stick move, right stick look, RT/A shoot,
+      X/B use, LB/RB cycle weapons, L3/LT sprint, Menu pause, Options minimap; A/B/d-pad
+      drive every menu screen.
 
 ## Milestone 4 — Engineering
 
