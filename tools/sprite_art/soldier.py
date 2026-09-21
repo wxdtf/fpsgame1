@@ -1,7 +1,7 @@
 """Soldier: a WWII German infantryman — feldgrau tunic, M35 steel helmet, jackboots, Y-straps, Kar98k.
 
 Canvas 64x96, turntable rig. Frames per view: 0 idle, 1-3 walk, 4-5 firing, 6 hurt;
-front only: 7 recoil, 8 falling, 9 corpse.
+front only: 7-12 the six death frames (see death_frames).
 """
 
 from pixelart import Canvas, Rig, ramp, rgb, turntable_frames
@@ -311,7 +311,19 @@ def draw_standing(frame, turn):
 
 
 def draw_recoil():
-    cv = draw_standing(6, 0)
+    """Death 0: hit square in the chest — arms thrown wide, rifle leaving his hands."""
+    cv = Canvas(W, H)
+    rig = Rig(cv, 0, CX)
+    ground = 94
+    hipY = 60
+    leg(rig, +1, hipY, ground, 3)
+    leg(rig, -1, hipY, ground, -4)
+    torso(rig, hipY)
+    shY = hipY - 22
+    arm(rig, +1, (14, shY, 0), (24, shY - 6, 2), (30, shY - 16, 4))
+    arm(rig, -1, (-14, shY, 0), (-24, shY - 4, 2), (-30, shY - 14, 4))
+    head(rig, hipY - 36, hurt=True)
+    rig.render()
     out = Canvas(W, H)
     for y in range(H):
         shift = -(H - y) // 9
@@ -319,15 +331,43 @@ def draw_recoil():
             c = cv.get(x, y)
             if c is not None:
                 out.set(x + shift, y, c)
-    for (bx, by, r) in ((28, 44, 4), (23, 40, 2), (33, 48, 2)):
+    # the rifle, knocked loose, tumbling in front of him
+    rifle2d(out, 8, hipY - 6, 30, hipY - 24)
+    for (bx, by, r) in ((CX - 4, hipY - 14, 4), (CX - 9, hipY - 10, 2), (CX + 1, hipY - 9, 2)):
         out.paint(out.mask().circle(bx, by, r), BLOOD)
-    out.paint(out.mask().circle(27, 46, 2), BLOOD_DARK)
+    out.paint(out.mask().circle(CX - 5, hipY - 12, 2), BLOOD_DARK)
+    for k in range(5):
+        out.set(CX - 12 - k * 2, hipY - 16 + (k % 2) * 2, BLOOD)
     out.outline(OUTLINE)
     return out
 
 
+def draw_stagger():
+    """Death 1: side on, reeling backwards, legs crossing, helmet slipping."""
+    cv = Canvas(W, H)
+    ground = 94
+    hipY = 63
+    legs = Rig(cv, 90, CX - 3)
+    leg(legs, +1, hipY, ground, 7)
+    leg(legs, -1, hipY, ground, -3)
+    legs.render()
+    upper = Rig(cv, 90, CX + 4)
+    torso(upper, hipY)
+    shY = hipY - 22
+    arm(upper, +1, (14, shY, 0), (16, shY + 10, -6), (12, shY + 22, -10))
+    arm(upper, -1, (-14, shY, 0), (-12, shY + 12, -4), (-8, shY + 24, -8))
+    upper.render()
+    hd = Rig(cv, 90, CX + 9)
+    head(hd, hipY - 37, hurt=True)
+    hd.render()
+    cv.paint(cv.mask().circle(CX - 4, hipY - 15, 3), BLOOD)
+    cv.paint(cv.mask().circle(CX - 7, hipY - 11, 2), BLOOD_DARK)
+    cv.outline(OUTLINE)
+    return cv
+
+
 def draw_falling():
-    """Frame 8: falling backwards, rifle flying from the hands."""
+    """Death 2: falling backwards, rifle flying from the hands."""
     cv = Canvas(W, H)
     hipY = 76
     m = cv.mask().tapered(30, hipY, 6, 18, hipY + 6, 5)
@@ -362,12 +402,79 @@ def draw_falling():
     return cv
 
 
-def draw_corpse():
-    """Frame 9: on his back, helmet rolled off, rifle beside him."""
+def draw_sit():
+    """Death 3: lands on his backside, legs out, arms trailing behind."""
+    cv = Canvas(W, H)
+    ground = 94
+    hipY = 82
+    # legs straight out to the left
+    m = cv.mask().tapered(30, hipY - 2, 6, 16, hipY, 5)
+    cv.part(m, TROUSER, thickness=3, tint=BACK)
+    m = cv.mask().tapered(16, hipY, 5, 6, hipY - 1, 4)
+    cv.part(m, BOOT, thickness=2, tint=BACK)
+    m = cv.mask().rect(2, hipY - 8, 7, 9)
+    cv.part(m, BOOT, thickness=2, tint=BACK)
+    m = cv.mask().tapered(32, hipY + 2, 6, 18, hipY + 6, 5)
+    cv.part(m, TROUSER, thickness=3)
+    m = cv.mask().tapered(18, hipY + 6, 5, 8, hipY + 6, 4)
+    cv.part(m, BOOT, thickness=2)
+    m = cv.mask().rect(3, hipY - 1, 8, 9)
+    cv.part(m, BOOT, thickness=2)
+    # torso leaning back, propped on one arm
+    m = cv.mask().tapered(36, hipY - 2, 11, 46, hipY - 26, 11)
+    cv.part(m, UNIFORM, thickness=3, rim=2)
+    m = cv.mask().poly([(42, hipY - 26), (46, hipY - 27), (42, hipY - 4), (38, hipY - 4)])
+    cv.part(m, BELT, thickness=1, rim=0, shadow=1)
+    cv.paint(cv.mask().rect(34, hipY - 4, 8, 3), BELT[2])
+    m = cv.mask().tapered(52, hipY - 24, 5, 58, hipY - 10, 4)
+    cv.part(m, UNIFORM, thickness=2)
+    m = cv.mask().tapered(58, hipY - 10, 4, 60, hipY + 4, 3)
+    cv.part(m, UNIFORM, thickness=2)
+    cv.part(cv.mask().circle(60, hipY + 6, 3), SKIN, thickness=2)
+    m = cv.mask().tapered(38, hipY - 20, 5, 28, hipY - 12, 4)
+    cv.part(m, UNIFORM, thickness=2, tint=BACK)
+    m = cv.mask().tapered(28, hipY - 12, 4, 22, hipY - 2, 3)
+    cv.part(m, UNIFORM, thickness=2, tint=BACK)
+    cv.part(cv.mask().circle(21, hipY, 3), SKIN, thickness=2)
+    r = Rig(cv, 45, 50)
+    head(r, hipY - 40, hurt=True)
+    r.render()
+    rifle2d(cv, 4, hipY - 48, 20, hipY - 60)
+    cv.paint(cv.mask().circle(44, hipY - 14, 4), BLOOD)
+    cv.paint(cv.mask().circle(41, hipY - 10, 2), BLOOD_DARK)
+    cv.outline(OUTLINE)
+    return cv
+
+
+def draw_impact():
+    """Death 4: flat on his back — the helmet bounces off, dust puffs up, the rifle clatters down."""
+    body = draw_corpse(pool=False, helmet=False, rifle=False)
+    cv = Canvas(W, H)
+    cv.blit(body, 0, -3)
+    ground = 92
+    cv.paint(cv.mask().oval(34, ground, 18, 2), BLOOD_DARK)
+    # helmet in the air, rolling
+    m = cv.mask().oval(14, ground - 36, 8, 6)
+    m.subtract(cv.mask().rect(0, ground - 34, 30, 10))
+    cv.part(m, HELMET, thickness=2, rim=1)
+    cv.paint(cv.mask().rect(7, ground - 35, 14, 1), HELMET[3])
+    rifle2d(cv, 18, ground - 30, 44, ground - 42)
+    dust = (rgb(96, 88, 78), rgb(128, 118, 104))
+    for k, (dx, dy, r) in enumerate(((8, ground - 5, 3), (2, ground - 9, 2), (58, ground - 6, 3), (62, ground - 11, 2))):
+        cv.paint(cv.mask().circle(dx, dy, r), dust[k % 2])
+    for k in range(5):
+        cv.set(34 + k * 3, ground - 18 - (k % 2) * 3, BLOOD if k % 2 else BLOOD_DARK)
+    cv.outline(OUTLINE)
+    return cv
+
+
+def draw_corpse(pool=True, helmet=True, rifle=True):
+    """Death 5: on his back, helmet rolled off, rifle beside him."""
     cv = Canvas(W, H)
     ground = 92
-    cv.paint(cv.mask().oval(34, ground, 26, 3), BLOOD_DARK)
-    cv.paint(cv.mask().oval(36, ground - 1, 16, 2), BLOOD)
+    if pool:
+        cv.paint(cv.mask().oval(34, ground, 26, 3), BLOOD_DARK)
+        cv.paint(cv.mask().oval(36, ground - 1, 16, 2), BLOOD)
     m = cv.mask().tapered(26, ground - 8, 5, 18, ground - 7, 4)
     cv.part(m, TROUSER, thickness=2, tint=BACK)
     m = cv.mask().tapered(18, ground - 7, 4, 10, ground - 6, 4)
@@ -395,15 +502,22 @@ def draw_corpse():
     cv.paint(cv.mask().rect(hx + 1, hy - 1, 3, 1), EYE_SOCKET)
     cv.paint(cv.mask().rect(hx - 2, hy + 2, 5, 1), MOUTH)
     cv.paint(cv.mask().oval(hx, hy - 5, 6, 2), SKIN[1])   # cropped hair
-    m = cv.mask().oval(14, ground - 18, 8, 5)
-    m.subtract(cv.mask().rect(0, ground - 24, 30, 6))
-    cv.part(m, HELMET, thickness=2, rim=1)
-    rifle2d(cv, 20, ground - 22, 46, ground - 24)
+    if helmet:
+        m = cv.mask().oval(14, ground - 18, 8, 5)
+        m.subtract(cv.mask().rect(0, ground - 24, 30, 6))
+        cv.part(m, HELMET, thickness=2, rim=1)
+    if rifle:
+        rifle2d(cv, 20, ground - 22, 46, ground - 24)
     cv.paint(cv.mask().circle(38, ground - 10, 3), BLOOD)
     cv.paint(cv.mask().circle(40, ground - 8, 2), BLOOD_DARK)
     cv.outline(OUTLINE)
     return cv
 
 
+def death_frames():
+    """Hit in the chest: arms fly out, he reels back, sits down hard and sprawls on his back."""
+    return [draw_recoil(), draw_stagger(), draw_falling(), draw_sit(), draw_impact(), draw_corpse()]
+
+
 def frames():
-    return turntable_frames(draw_standing, lambda: [draw_recoil(), draw_falling(), draw_corpse()])
+    return turntable_frames(draw_standing, death_frames)

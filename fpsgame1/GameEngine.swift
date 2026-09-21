@@ -64,6 +64,17 @@ struct Explosion {
     var progress: Double { min(1.0, timer / duration) }
 }
 
+/// Spurt of blood thrown out of an enemy by a hit, drawn at the point of impact
+struct HitSplash {
+    var x: Double
+    var y: Double
+    /// 0 red blood, 1 the Baron's green ichor (selects the row of the hit-splash sheet)
+    var variant: Int
+    var timer: Double = 0
+    let duration: Double = 0.28
+    var progress: Double { min(1.0, timer / duration) }
+}
+
 /// Score card for one finished level, kept for the end-of-campaign summary
 struct LevelResult {
     let level: Int
@@ -81,6 +92,7 @@ final class GameEngine {
     var items: [Item]
     var projectiles: [Projectile] = []
     var explosions: [Explosion] = []
+    var hitSplashes: [HitSplash] = []
     /// Static data of the loaded level: layout, spawns and mission objective
     private(set) var levelData: GameWorld.LevelData
     /// Tile-distance field from the player, rebuilt every frame for enemy pathfinding
@@ -196,6 +208,7 @@ final class GameEngine {
         items = []
         projectiles = []
         explosions = []
+        hitSplashes = []
         killCount = 0
         elapsedTime = 0
         damageFlashTimer = 0
@@ -361,6 +374,10 @@ final class GameEngine {
             explosions[i].timer += deltaTime
         }
         explosions.removeAll(where: { $0.timer >= $0.duration })
+        for i in hitSplashes.indices {
+            hitSplashes[i].timer += deltaTime
+        }
+        hitSplashes.removeAll(where: { $0.timer >= $0.duration })
 
         // Update items
         for i in items.indices {
@@ -496,6 +513,9 @@ final class GameEngine {
         let wasAlive = enemies[index].isAlive
         let wasDormant = isDormant(enemies[index])
         enemies[index].takeDamage(amount)
+        if wasAlive {
+            spawnHitSplash(on: enemies[index])
+        }
         if wasDormant && enemies[index].type.isBoss && !isDormant(enemies[index]) {
             bossAlertedThisFrame = true
         }
@@ -512,6 +532,15 @@ final class GameEngine {
         }
         // Alert nearby enemies
         alertNearbyEnemies(x: enemies[index].x, y: enemies[index].y, radius: 10)
+    }
+
+    /// Blood bursts from the enemy on the side facing the player, so it draws in front of the body
+    private func spawnHitSplash(on enemy: Enemy) {
+        let dx = player.x - enemy.x, dy = player.y - enemy.y
+        let dist = max(0.001, sqrt(dx * dx + dy * dy))
+        let toward = min(0.25, dist * 0.5)
+        hitSplashes.append(HitSplash(x: enemy.x + dx / dist * toward, y: enemy.y + dy / dist * toward,
+                                     variant: enemy.type.bleedsGreen ? 1 : 0))
     }
 
     /// Detonate a rocket: direct-hit damage, blast damage that falls off with distance (never

@@ -23,6 +23,7 @@ enum SpriteSheetID: Int, CaseIterable {
     case items
     case projectiles
     case explosions
+    case hitSplashes
 
     static func enemy(_ type: EnemyType) -> SpriteSheetID {
         switch type {
@@ -59,6 +60,7 @@ extension SpriteAssets {
         case .items: return itemSprites
         case .projectiles: return projectileSprites
         case .explosions: return explosionSprites
+        case .hitSplashes: return hitSplashSprites
         }
     }
 }

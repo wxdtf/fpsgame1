@@ -62,10 +62,12 @@ final class SpriteAtlasTests: XCTestCase {
 
     func testSpriteFrameIndicesStayInsideTheirSheets() {
         let atlas = SpriteAtlas()
-        // Enemy animation frames used by Enemy.spriteFrameOffset go up to 9
+        // Enemy animation frames used by Enemy.spriteFrameOffset go up to frontFrameCount - 1
         for type in [EnemyType.imp, .demon, .soldier, .baron] {
-            XCTAssertGreaterThanOrEqual(atlas.frameCount(SpriteSheetID.enemy(type)), 10, "\(type) sheet is short")
+            XCTAssertGreaterThanOrEqual(atlas.frameCount(SpriteSheetID.enemy(type)), Enemy.frontFrameCount, "\(type) sheet is short")
         }
+        // HitSplash frames: two variants of four
+        XCTAssertGreaterThanOrEqual(atlas.frameCount(.hitSplashes), 8)
         // Item.spriteIndex goes up to 13
         XCTAssertGreaterThanOrEqual(atlas.frameCount(.items), 14)
         // ProjectileType.spriteFrame goes up to 3

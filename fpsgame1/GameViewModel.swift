@@ -283,6 +283,7 @@ final class GameViewModel {
                 items: engine.items,
                 projectiles: engine.projectiles,
                 explosions: engine.explosions,
+                hitSplashes: engine.hitSplashes,
                 elapsedTime: engine.elapsedTime
             )
             engine.player.angle -= angleOffset
@@ -308,6 +309,7 @@ final class GameViewModel {
             items: engine.items,
             projectiles: engine.projectiles,
             explosions: engine.explosions,
+            hitSplashes: engine.hitSplashes,
             elapsedTime: engine.elapsedTime,
             effects: currentEffects()
         )

@@ -78,11 +78,13 @@ final class CombatTests: XCTestCase {
         let world = TestWorld.make(["###", "#.#", "###"])
         var nav = NavigationField(width: 3, height: 3)
         nav.rebuild(world: world, goalX: 1, goalY: 1)
-        for _ in 0..<70 {
+        let steps = Int(enemy.type.deathDuration * 60) + 5
+        for _ in 0..<steps {
             enemy.update(deltaTime: 1.0 / 60.0, playerX: 1.5, playerY: 1.5, world: world, nav: nav)
         }
         XCTAssertTrue(enemy.isDead)
-        XCTAssertEqual(enemy.spriteFrameOffset, 9, "corpse frame")
+        XCTAssertEqual(enemy.spriteFrameOffset, Enemy.frontFrameCount - 1, "corpse frame")
+        XCTAssertEqual(enemy.deathFrame, Enemy.deathFrameCount - 1)
     }
 
     func testNonLethalHitAlwaysWakesADormantEnemy() {

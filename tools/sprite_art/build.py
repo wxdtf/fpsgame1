@@ -5,7 +5,7 @@ Build the baked sprite sheets (enemies, first-person weapons, pickups).
     python3 tools/sprite_art/build.py            # write fpsgame1/BakedSpriteData.swift + previews
     python3 tools/sprite_art/build.py --preview  # previews only (build/sprite_art/*.png)
 
-The Swift file is generated; edit the art modules (imp.py, weapons.py, items.py, ...) instead.
+The Swift file is generated; edit the art modules (imp.py, weapons.py, items.py, effects.py, ...) instead.
 portal.py is the design reference for the exit portal, which stays procedural in Textures.swift.
 """
 
@@ -33,6 +33,7 @@ for enemy in ("imp", "demon", "soldier", "baron"):
 for weapon in ("fist", "pistol", "shotgun", "chaingun", "rocketLauncher"):
     register("WeaponSpriteData", weapon, "weapons", frames_attr="frames_for", cols=5, args=(weapon,))
 register("ItemSpriteData", "items", "items", cols=7)
+register("EffectSpriteData", "hitSplash", "effects", cols=4)
 
 
 def main(argv):
@@ -43,8 +44,8 @@ def main(argv):
     groups = {}
     for group, name, make, w, h, cols in SHEETS:
         frames = make()
-        # enemy previews: front 0-6, then each turn, then the death frames
-        preview = frames[:7] + frames[10:] + frames[7:10] if len(frames) == 38 else frames
+        # enemy previews: front 0-6, then each turn, then the six death frames
+        preview = frames[:7] + frames[13:] + frames[7:13] if len(frames) == 41 else frames
         scale = 3 if w <= 128 else 2
         write_png(os.path.join(out_dir, f"{name}.png"), preview, scale=scale, cols=cols)
         print(f"{name}: {len(frames)} frames of {w}x{h}")

@@ -29,6 +29,8 @@ final class SpriteAssets {
     let itemSprites: SpriteSheet
     let projectileSprites: SpriteSheet
     let explosionSprites: SpriteSheet
+    /// Blood spurts on hit: frames 0-3 red, 4-7 green (tools/sprite_art/effects.py)
+    let hitSplashSprites: SpriteSheet
 
     private init() {
         impSprites = EnemySpriteData.imp.decode()
@@ -43,6 +45,7 @@ final class SpriteAssets {
         itemSprites = ItemSpriteData.items.decode()
         projectileSprites = Self.generateProjectileSprites()
         explosionSprites = Self.generateExplosionSprites()
+        hitSplashSprites = EffectSpriteData.hitSplash.decode()
     }
 
     func enemySprites(for type: EnemyType) -> SpriteSheet {
