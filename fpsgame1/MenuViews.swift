@@ -68,7 +68,7 @@ struct TitleScreenView: View {
                             Text("\u{25C0}")
                                 .font(.system(size: 14, weight: .bold, design: .monospaced))
                                 .foregroundColor(.gray)
-                                .onTapGesture { settings.difficulty = settings.difficulty.previous }
+                                .onTapGesture { settings.setDifficulty(settings.difficulty.previous) }
                             Text(settings.difficulty.name)
                                 .font(.system(size: 17, weight: .black, design: .monospaced))
                                 .foregroundColor(.orange)
@@ -76,7 +76,7 @@ struct TitleScreenView: View {
                             Text("\u{25B6}")
                                 .font(.system(size: 14, weight: .bold, design: .monospaced))
                                 .foregroundColor(.gray)
-                                .onTapGesture { settings.difficulty = settings.difficulty.next }
+                                .onTapGesture { settings.setDifficulty(settings.difficulty.next) }
                         }
                         Text(settings.difficulty.blurb)
                             .font(.system(size: 11, design: .monospaced))
@@ -123,9 +123,9 @@ struct TitleScreenView: View {
     private func handleKey(_ keyCode: UInt16) {
         switch keyCode {
         case InputManager.keyLeft:
-            settings.difficulty = settings.difficulty.previous
+            settings.setDifficulty(settings.difficulty.previous)
         case InputManager.keyRight:
-            settings.difficulty = settings.difficulty.next
+            settings.setDifficulty(settings.difficulty.next)
         case InputManager.keyS:
             onSettings()
         default:

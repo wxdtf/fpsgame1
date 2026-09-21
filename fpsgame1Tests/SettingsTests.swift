@@ -66,8 +66,8 @@ final class SettingsTests: XCTestCase {
         first.adjustSensitivity(by: 5)
         first.adjustMasterVolume(by: -3)
         first.adjustMusicVolume(by: 20)
-        first.minimapDefault = false
-        first.difficulty = .hard
+        first.setMinimapDefault(false)
+        first.setDifficulty(.hard)
 
         let second = GameSettings(defaults: defaults)
         XCTAssertEqual(second.mouseSensitivity, 1.5, accuracy: 1e-9)

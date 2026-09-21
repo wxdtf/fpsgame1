@@ -74,8 +74,8 @@ enum Difficulty: Int, CaseIterable, Codable {
 
 // MARK: - Settings
 
-/// The options menu. Every change is written straight to UserDefaults and, for the
-/// volumes, pushed to the audio engine.
+/// The options menu. Every change goes through a method that writes it straight to
+/// UserDefaults and, for the volumes, pushes it to the audio engine.
 @Observable
 final class GameSettings {
     static let shared = GameSettings()
@@ -86,13 +86,13 @@ final class GameSettings {
 
     private let defaults: UserDefaults
 
-    var mouseSensitivity: Double { didSet { save() } }
-    var masterVolume: Double { didSet { save(); applyVolumes() } }
-    var sfxVolume: Double { didSet { save(); applyVolumes() } }
-    var musicVolume: Double { didSet { save(); applyVolumes() } }
+    private(set) var mouseSensitivity: Double
+    private(set) var masterVolume: Double
+    private(set) var sfxVolume: Double
+    private(set) var musicVolume: Double
     /// Whether the minimap is showing when a level starts (TAB still toggles it)
-    var minimapDefault: Bool { didSet { save() } }
-    var difficulty: Difficulty { didSet { save() } }
+    private(set) var minimapDefault: Bool
+    private(set) var difficulty: Difficulty
 
     private enum Key {
         static let sensitivity = "settings.mouseSensitivity"
@@ -129,11 +129,38 @@ final class GameSettings {
 
     func adjustSensitivity(by steps: Int) {
         mouseSensitivity = Self.clampSensitivity(mouseSensitivity + Double(steps) * Self.sensitivityStep)
+        save()
     }
 
-    func adjustMasterVolume(by steps: Int) { masterVolume = Self.clampVolume(masterVolume + Double(steps) * Self.volumeStep) }
-    func adjustSfxVolume(by steps: Int) { sfxVolume = Self.clampVolume(sfxVolume + Double(steps) * Self.volumeStep) }
-    func adjustMusicVolume(by steps: Int) { musicVolume = Self.clampVolume(musicVolume + Double(steps) * Self.volumeStep) }
+    func adjustMasterVolume(by steps: Int) {
+        masterVolume = Self.clampVolume(masterVolume + Double(steps) * Self.volumeStep)
+        save()
+        applyVolumes()
+    }
+
+    func adjustSfxVolume(by steps: Int) {
+        sfxVolume = Self.clampVolume(sfxVolume + Double(steps) * Self.volumeStep)
+        save()
+        applyVolumes()
+    }
+
+    func adjustMusicVolume(by steps: Int) {
+        musicVolume = Self.clampVolume(musicVolume + Double(steps) * Self.volumeStep)
+        save()
+        applyVolumes()
+    }
+
+    func setMinimapDefault(_ on: Bool) {
+        minimapDefault = on
+        save()
+    }
+
+    func toggleMinimapDefault() { setMinimapDefault(!minimapDefault) }
+
+    func setDifficulty(_ chosen: Difficulty) {
+        difficulty = chosen
+        save()
+    }
 
     func resetToDefaults() {
         mouseSensitivity = 1.0
@@ -141,6 +168,8 @@ final class GameSettings {
         sfxVolume = 1.0
         musicVolume = 0.8
         minimapDefault = true
+        save()
+        applyVolumes()
     }
 
     private func save() {

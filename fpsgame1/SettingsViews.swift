@@ -137,7 +137,7 @@ struct SettingsView: View {
         case .master: settings.adjustMasterVolume(by: direction)
         case .sfx: settings.adjustSfxVolume(by: direction)
         case .music: settings.adjustMusicVolume(by: direction)
-        case .minimap: settings.minimapDefault.toggle()
+        case .minimap: settings.toggleMinimapDefault()
         case .reset, .back: break
         }
     }
@@ -146,7 +146,7 @@ struct SettingsView: View {
         switch Row(rawValue: selectedRow) ?? .back {
         case .reset: settings.resetToDefaults()
         case .back: onBack()
-        case .minimap: settings.minimapDefault.toggle()
+        case .minimap: settings.toggleMinimapDefault()
         default: break
         }
     }
