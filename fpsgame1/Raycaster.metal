@@ -282,8 +282,8 @@ kernel void wallKernel(
 
         tileVal = worldTiles[mapY * worldW + mapX];
 
-        if (tileVal == 4 || tileVal == 7 || tileVal == 8 || tileVal == 9) {
-            // All door types (regular + locked)
+        if (tileVal == 4 || tileVal == 7 || tileVal == 8 || tileVal == 9 || tileVal >= 11) {
+            // All door types (regular, locked and secret)
             float openAmt = doorOpenAmounts[mapY * worldW + mapX];
             if (openAmt >= 0.99) {
                 // Fully open — ray passes through
@@ -324,7 +324,7 @@ kernel void wallKernel(
         : (uniforms.playerX + perpWallDist * rayDirX);
     wallX -= floor(wallX);
     // Offset door texture for sliding effect
-    if (tileVal == 4 || tileVal == 7 || tileVal == 8 || tileVal == 9) {
+    if (tileVal == 4 || tileVal == 7 || tileVal == 8 || tileVal == 9 || tileVal >= 11) {
         float openAmt = doorOpenAmounts[mapY * worldW + mapX];
         // Flip wallX consistent with gap detection
         if ((side == 0 && rayDirX > 0) || (side == 1 && rayDirY > 0)) {
@@ -361,6 +361,9 @@ kernel void wallKernel(
         case 7: texIndex = 8; break;  // lockedDoorRed
         case 8: texIndex = 9; break;  // lockedDoorBlue
         case 9: texIndex = 10; break; // lockedDoorYellow
+        case 11: texIndex = 0; break; // secret door, brick
+        case 12: texIndex = 1; break; // secret door, metal
+        case 13: texIndex = 2; break; // secret door, tech
         default: texIndex = 0; break;
     }
     int texBase = texIndex * ppt;

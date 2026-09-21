@@ -12,7 +12,7 @@ place to look before starting new work; update it when a milestone lands.
 | Enemies | 4 types (imp, WWII German infantryman, demon, and the Baron of Hell boss). State machine: idle → patrol → chase → attack → hurt → dying → dead. Line-of-sight detection, projectile and melee attacks, tile-based pathfinding when out of sight, door opening, pain chance, wandering patrols. Bosses claw up close, throw plasma at range, keep advancing between attacks and show a HUD health bar. |
 | World | 32×32 tile maps, 11 tile types, regular + colour-locked doors with auto-close, damage floors (nukage), exit portal, per-level difficulty scaling. |
 | Campaign | 4 levels with briefings, data-driven mission objectives (item retrieval / extermination), level summary with rating, campaign summary, death restarts the current level. |
-| UI / feedback | Title with skill select, settings menu, briefing (typewriter), pause menu, death, level and campaign summary screens (with per-level records). HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, blood spurts on hits, screen shake, muzzle flash, death camera. |
+| UI / feedback | Title with skill select, settings menu, briefing (typewriter), pause menu, death, level and campaign summary screens (with per-level records, secrets and items tallies). HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, blood spurts on hits, screen shake, muzzle flash, death camera. |
 | Audio | Fully procedural: 14 sound effects and one looping BGM track per level (4 tracks), generated at runtime with AVAudioEngine. |
 | Assets | None on disk. Wall/floor textures, face frames, projectiles, explosions and sounds are generated procedurally in Swift; the exit portal is procedural too, designed in `tools/sprite_art/portal.py` and ported line for line. The four enemy sheets, the five first-person weapons (240×150) and the 14 pickups (32×32) are pixel art authored in `tools/sprite_art/*.py` on a turntable rig (a 3D part layout projected to the front, 3/4, side, back-3/4 and back views, with automatic cel shading, contact shadows and outlines; 41 frames each at 64×96 / 96×96 / 96×120, with a six-frame death sequence choreographed per enemy) and baked into `BakedSpriteData.swift` as run-length strings by `tools/sprite_art/build.py`. Enemies show the rotation that matches their facing relative to the player, mirrored for the other side. |
 | Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). GitHub Actions builds the app on a macOS runner and runs the validator on every push and PR. `tools/verify_local.sh` syncs a Mac clone to `main`, validates, builds with the newest Xcode and launches the app for a play-test. `fpsgame1Tests` (XCTest, hosted by the app) covers the Foundation-only engine: world/door solidity, navigation field, player movement and camera, weapons, enemy state machine, level flow and shipped level data. CI runs the tests in Debug and then builds Release. |
@@ -71,8 +71,10 @@ Found by reviewing the code and by running the new level validator:
 - [x] Character select: three marines with their own status-bar portrait (hair, skin, eyes,
       headband, scar, stubble), starting weapon, armor and speed; chosen on a new screen
       between the title and the first briefing and remembered between launches.
-- [ ] Secret areas and an items-collected percentage on the summary screens.
-- [ ] Per-level par times used by the rating instead of a flat 2 minutes.
+- [x] Secret areas: sliding secret doors textured as the wall around them (tiles 11-13),
+      two per level with a reward behind each, "A SECRET IS REVEALED!" with a chime, and a
+      SECRETS x/y and ITEMS % tally on the level and campaign summaries.
+- [x] Per-level par times (`LevelData.parTime`) used by the rating and shown next to the time.
 
 ## Milestone 3 — Meta & UX
 
@@ -130,3 +132,6 @@ Found by reviewing the code and by running the new level validator:
    and fails on anything that would make the level unwinnable.
 3. Set the level's `objective:` and briefing text; `GameWorld.maxLevel` controls the
    campaign length.
+4. Secrets: place a secret door (11 brick / 12 metal / 13 tech, matching the wall it sits
+   in) and list the tile just inside it under `secrets:`; the validator checks both. Set
+   `parTime:` to a time a good run should beat.

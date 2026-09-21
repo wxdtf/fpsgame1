@@ -48,6 +48,8 @@ final class GameViewModel {
     var objectiveComplete: Bool = false
     var isFinalLevel: Bool = false
     var levelResults: [LevelResult] = []
+    /// The level just finished, for the summary screen
+    var lastLevelResult: LevelResult? { levelResults.last }
     var bossActive: Bool = false
     var bossName: String = ""
     var bossHealthFraction: Double = 1.0
@@ -510,6 +512,11 @@ final class GameViewModel {
             // Rocket detonated
             if engine.explosionThisFrame {
                 audio.playExplosion()
+            }
+
+            // Secret area found
+            if engine.secretFoundThisFrame {
+                audio.playSecretFound()
             }
 
             // Item pickup

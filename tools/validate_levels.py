@@ -12,6 +12,8 @@ source and checks that each map is actually playable:
     enemy/item can be reached from the start, honouring locked doors: a colour
     only unlocks once its key card is reachable
   * doors sit in a corridor (walls on two opposite sides)
+  * secret doors match the wall type next to them and every secret trigger tile is
+    walkable and reachable
   * damage-floor tiles are used only where a wall would not be expected
 
 Usage:
@@ -30,15 +32,19 @@ from pathlib import Path
 # Tile ids — must match TileType in GameWorld.swift
 EMPTY, BRICK, METAL, TECH, DOOR, BRICK_TORCH, EXIT = 0, 1, 2, 3, 4, 5, 6
 LOCKED_RED, LOCKED_BLUE, LOCKED_YELLOW, DAMAGE_FLOOR = 7, 8, 9, 10
+SECRET_BRICK, SECRET_METAL, SECRET_TECH = 11, 12, 13
 
 LOCKED_DOORS = {LOCKED_RED: "red", LOCKED_BLUE: "blue", LOCKED_YELLOW: "yellow"}
-WALKABLE = {EMPTY, DOOR, DAMAGE_FLOOR}
+# Secret doors slide open like doors but are textured as the wall they sit in
+SECRET_DOORS = {SECRET_BRICK: BRICK, SECRET_METAL: METAL, SECRET_TECH: TECH}
+WALKABLE = {EMPTY, DOOR, DAMAGE_FLOOR} | set(SECRET_DOORS)
 WALLS = {BRICK, METAL, TECH, BRICK_TORCH, EXIT}
 ALL_KEYS = {"red", "blue", "yellow"}
 
 TILE_GLYPH = {
     EMPTY: ".", BRICK: "#", METAL: "#", TECH: "#", DOOR: "+", BRICK_TORCH: "T",
     EXIT: "X", LOCKED_RED: "R", LOCKED_BLUE: "B", LOCKED_YELLOW: "Y", DAMAGE_FLOOR: "~",
+    SECRET_BRICK: "%", SECRET_METAL: "%", SECRET_TECH: "%",
 }
 
 
@@ -50,6 +56,8 @@ class Level:
         self.enemies = []          # (type, x, y)
         self.items = []            # (kind, args, x, y)
         self.objective = None      # e.g. "retrieveIntel", "exterminate(.demon)"
+        self.secrets = []          # (x, y) trigger tiles
+        self.par_time = None
         self.errors = []
         self.warnings = []
 
@@ -140,6 +148,13 @@ def parse_levels(source):
         if om:
             level.objective = om.group(1)
 
+        pm = re.search(r"parTime:\s*([0-9.]+)", chunk)
+        if pm:
+            level.par_time = float(pm.group(1))
+        sm2 = re.search(r"secrets:\s*\[([^\]]*)\]", chunk)
+        if sm2:
+            level.secrets = [(int(a), int(b)) for a, b in re.findall(r"\(\s*(\d+)\s*,\s*(\d+)\s*\)", sm2.group(1))]
+
         levels.append(level)
     return levels
 
@@ -228,7 +243,7 @@ def validate(level, require_all_reachable=True):
     sx, sy = level.start
     for cx, cy in ((sx - 0.25, sy - 0.25), (sx + 0.25, sy - 0.25), (sx - 0.25, sy + 0.25), (sx + 0.25, sy + 0.25)):
         t = level.tile(int(cx), int(cy))
-        if t not in WALKABLE or t == DOOR:
+        if t not in WALKABLE or t == DOOR or t in SECRET_DOORS:
             level.error(f"player start ({sx},{sy}) overlaps non-walkable tile ({int(cx)},{int(cy)})")
 
     # Entities must be on walkable, non-door tiles
@@ -236,13 +251,13 @@ def validate(level, require_all_reachable=True):
         t = level.tile(int(x), int(y))
         if t not in WALKABLE:
             level.error(f"enemy {kind} at ({x},{y}) is inside a wall tile")
-        elif t == DOOR:
+        elif t == DOOR or t in SECRET_DOORS:
             level.error(f"enemy {kind} at ({x},{y}) is inside a door tile")
     for kind, args, x, y in level.items:
         t = level.tile(int(x), int(y))
         if t not in WALKABLE and t not in LOCKED_DOORS:
             level.error(f"item {kind}{args} at ({x},{y}) is inside a wall tile")
-        elif t == DOOR or t in LOCKED_DOORS:
+        elif t == DOOR or t in LOCKED_DOORS or t in SECRET_DOORS:
             level.error(f"item {kind}{args} at ({x},{y}) is inside a door tile")
 
     # Duplicate positions (two entities stacked on the same spot)
@@ -267,6 +282,16 @@ def validate(level, require_all_reachable=True):
                 if horiz_walls and vert_walls:
                     level.warn(f"door at ({x},{y}) is walled in on all four sides")
 
+    # Secret doors: textured as a wall, so a neighbouring wall must be of that type
+    for y in range(h):
+        for x in range(w):
+            t = level.tile(x, y)
+            if t in SECRET_DOORS:
+                wall = SECRET_DOORS[t]
+                around = [level.tile(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+                if wall not in around:
+                    level.error(f"secret door at ({x},{y}) is textured as tile {wall} but no such wall touches it")
+
     # Reachability honouring keys
     reach, keys, key_passes = reachable_with_keys(level)
     level.reach = reach
@@ -280,6 +305,19 @@ def validate(level, require_all_reachable=True):
     for ex, ey in exits:
         if not adjacent_walkable(level, ex, ey, reach):
             level.error(f"exit portal at ({ex},{ey}) is not reachable from the start")
+
+    # Secret trigger tiles: walkable floor, reachable, and each behind a secret door
+    for x, y in level.secrets:
+        t = level.tile(x, y)
+        if t not in WALKABLE or t == DOOR or t in SECRET_DOORS:
+            level.error(f"secret trigger ({x},{y}) is not on open floor")
+        elif (x, y) not in reach:
+            level.error(f"secret trigger ({x},{y}) is not reachable from the start")
+    secret_doors = sum(1 for row in level.layout for t in row if t in SECRET_DOORS)
+    if secret_doors and not level.secrets:
+        level.warn("level has secret doors but no secret trigger tiles")
+    if level.secrets and not secret_doors:
+        level.warn("level lists secrets but has no secret doors")
 
     # Every locked-door colour present needs a reachable key
     colours_needed = {LOCKED_DOORS[t] for row in level.layout for t in row if t in LOCKED_DOORS}
@@ -396,7 +434,7 @@ def stats(level):
             totals["shells"] += amt
     walkable = sum(1 for row in level.layout for t in row if t in WALKABLE)
     nukage = sum(1 for row in level.layout for t in row if t == DAMAGE_FLOOR)
-    doors = sum(1 for row in level.layout for t in row if t == DOOR or t in LOCKED_DOORS)
+    doors = sum(1 for row in level.layout for t in row if t == DOOR or t in LOCKED_DOORS or t in SECRET_DOORS)
     return enemy_counts, kinds, totals, walkable, nukage, doors
 
 
@@ -440,6 +478,8 @@ def main():
               f"{walkable} walkable tiles, {nukage} damage-floor tiles)")
         if level.objective:
             print(f"  objective: {level.objective}")
+        if level.secrets or level.par_time:
+            print(f"  secrets: {len(level.secrets)}, par: {level.par_time}")
         if getattr(level, "key_passes", None):
             print("  key progression: " + " -> ".join("+".join(p) for p in level.key_passes))
         for msg in getattr(level, "info", []):

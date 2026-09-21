@@ -20,7 +20,7 @@ A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Me
 - **DOOM-Style HUD** — Health, armor, ammo display with an expressive face indicator
 - **Nukage & Torches** — Toxic floors that deal periodic damage and flickering torch lighting
 - **Fog of War Minimap** — Tactical minimap that reveals explored areas
-- **Level Ratings** — Performance-based ratings from "I'M TOO YOUNG TO DIE" to "ULTRA-VIOLENCE"
+- **Secrets & Ratings** — Sliding secret doors hidden in the walls with rewards behind them, an items/secrets tally on every summary, and performance ratings against per-level par times
 
 ## Controls
 
