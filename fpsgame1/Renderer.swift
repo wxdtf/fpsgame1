@@ -53,7 +53,7 @@ final class Renderer {
         zBuffer.deallocate()
     }
 
-    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], explosions: [Explosion] = [], elapsedTime: Double = 0) {
+    func render(player: Player, world: GameWorld, enemies: [Enemy], items: [Item], projectiles: [Projectile] = [], explosions: [Explosion] = [], hitSplashes: [HitSplash] = [], elapsedTime: Double = 0) {
         let buf = pixelBuffer.rawPixels
         let n = pixelBuffer.count
         for i in 0..<n { buf[i] = 0xFF000000 }
@@ -68,7 +68,7 @@ final class Renderer {
 
         renderFloorCeiling(player: player)
         renderWalls(player: player, world: world)
-        renderSprites(player: player, enemies: enemies, items: items, projectiles: projectiles, explosions: explosions)
+        renderSprites(player: player, enemies: enemies, items: items, projectiles: projectiles, explosions: explosions, hitSplashes: hitSplashes)
         renderWeapon(player: player)
     }
 
@@ -344,7 +344,7 @@ final class Renderer {
 
     // MARK: - Sprite Rendering
 
-    private func renderSprites(player: Player, enemies: [Enemy], items: [Item], projectiles: [Projectile], explosions: [Explosion]) {
+    private func renderSprites(player: Player, enemies: [Enemy], items: [Item], projectiles: [Projectile], explosions: [Explosion], hitSplashes: [HitSplash]) {
         struct SpriteEntry {
             var x: Double; var y: Double; var dist: Double
             var pixels: [UInt32]; var spriteW: Int; var spriteH: Int; var vOffset: Double
@@ -409,6 +409,19 @@ final class Renderer {
                                        pixels: sheet.frames[frameIdx],
                                        spriteW: sheet.width, spriteH: sheet.height,
                                        vOffset: 0.05, scale: 1.2, fullBright: true))
+        }
+
+        // Hit splashes: a short blood spurt at chest height where a shot landed
+        for splash in hitSplashes {
+            let dx = splash.x - player.x, dy = splash.y - player.y
+            let dist = sqrt(dx * dx + dy * dy)
+            guard dist < GameConstants.maxRenderDistance else { continue }
+            let sheet = sprites.hitSplashSprites
+            let frameIdx = min(sheet.frameCount - 1, splash.variant * 4 + min(3, Int(splash.progress * 4)))
+            entries.append(SpriteEntry(x: splash.x, y: splash.y, dist: dist,
+                                       pixels: sheet.frames[frameIdx],
+                                       spriteW: sheet.width, spriteH: sheet.height,
+                                       vOffset: -0.05, scale: 0.4))
         }
 
         entries.sort { $0.dist > $1.dist }

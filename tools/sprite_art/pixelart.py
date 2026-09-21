@@ -484,7 +484,7 @@ TURNS = [0, 45, 90, 135, 180]
 
 
 def turntable_frames(draw_standing, draw_death, standing_count=7):
-    """Sheet layout: front 0..9, then for each of the four other turns frames 0..6."""
+    """Sheet layout: front 0..6, the death frames (6), then for each of the four other turns frames 0..6."""
     out = [draw_standing(f, 0) for f in range(standing_count)] + draw_death()
     for turn in TURNS[1:]:
         out += [draw_standing(f, turn) for f in range(standing_count)]

@@ -125,6 +125,26 @@ enum EnemyType: Int {
         }
     }
 
+    /// Barons bleed green ichor; everything else red
+    var bleedsGreen: Bool { self == .baron }
+
+    /// How long each of the six death frames shows, in seconds. Every enemy goes down
+    /// its own way (the frames are authored per enemy in tools/sprite_art):
+    /// imp — spun round by the hit and dropped face first; demon — rears up, crashes
+    /// muzzle first and rolls over; soldier — thrown back, sits down hard, sprawls;
+    /// baron — roars in defiance, drops to its knees, topples like a felled tree.
+    var deathFrameDurations: [Double] {
+        switch self {
+        case .imp: return [0.12, 0.14, 0.14, 0.16, 0.12, 0.20]
+        case .demon: return [0.14, 0.24, 0.16, 0.18, 0.14, 0.24]
+        case .soldier: return [0.14, 0.18, 0.16, 0.18, 0.12, 0.22]
+        case .baron: return [0.18, 0.42, 0.22, 0.36, 0.18, 0.30]
+        }
+    }
+
+    /// Total length of the death animation
+    var deathDuration: Double { deathFrameDurations.reduce(0, +) }
+
     /// Upper-case plural for objective text, e.g. "EXTERMINATE DEMONS"
     var pluralName: String {
         switch self {
@@ -199,11 +219,23 @@ struct Enemy: Identifiable {
         case .attacking: return 4 + (animationFrame % 2)
         case .hurt: return 6
         case .dying(let timer):
-            // 1.0s total: recoil (1.0-0.6), falling (0.6-0.3), corpse (0.3-0)
-            if timer > 0.6 { return 7 }       // Recoil — staggering back
-            else if timer > 0.3 { return 8 }  // Falling — body collapsing
-            else { return 9 }                  // Corpse on ground
-        case .dead: return 9
+            // Walk the per-type frame durations; the last frame is the corpse
+            let elapsed = type.deathDuration - timer
+            var end = 0.0
+            for (i, duration) in type.deathFrameDurations.enumerated() {
+                end += duration
+                if elapsed < end { return Self.rotatedFrameCount + i }
+            }
+            return Self.frontFrameCount - 1
+        case .dead: return Self.frontFrameCount - 1
+        }
+    }
+
+    /// Which of the six death frames is showing (0-5), or nil while alive
+    var deathFrame: Int? {
+        switch state {
+        case .dying, .dead: return spriteFrameOffset - Self.rotatedFrameCount
+        default: return nil
         }
     }
 
@@ -215,10 +247,12 @@ struct Enemy: Identifiable {
         let mirrored: Bool
     }
 
-    /// Sheet layout: frames 0-9 are the front view (0 idle, 1-3 walk, 4-5 attack, 6 hurt,
-    /// 7 recoil, 8 falling, 9 corpse); then rotations 1-4 each carry frames 0-6.
+    /// Sheet layout: frames 0-12 are the front view (0 idle, 1-3 walk, 4-5 attack, 6 hurt,
+    /// 7-12 the six death frames ending in the corpse); then rotations 1-4 each carry
+    /// frames 0-6.
     static let rotatedFrameCount = 7
-    static let frontFrameCount = 10
+    static let deathFrameCount = 6
+    static let frontFrameCount = rotatedFrameCount + deathFrameCount
 
     func spriteView(viewerX: Double, viewerY: Double) -> SpriteView {
         let toViewer = atan2(viewerY - y, viewerX - x)
@@ -244,16 +278,10 @@ struct Enemy: Identifiable {
     var deathVOffset: Double {
         switch state {
         case .dying(let timer):
-            if timer > 0.6 { return 0.0 }
-            else if timer > 0.3 {
-                // Falling: 0.0 → 0.08 over 0.3s
-                let progress = 1.0 - (timer - 0.3) / 0.3
-                return progress * 0.08
-            } else {
-                // Settling: 0.08 → 0.12
-                let progress = 1.0 - timer / 0.3
-                return 0.08 + progress * 0.04
-            }
+            // The body sinks toward the floor line over the second half of the fall
+            let progress = 1.0 - timer / type.deathDuration
+            let sink = max(0.0, min(1.0, (progress - 0.4) / 0.5))
+            return 0.12 * sink
         case .dead: return 0.12
         default: return 0.0
         }
@@ -341,7 +369,7 @@ struct Enemy: Identifiable {
             let newTimer = timer - deltaTime
             if newTimer <= 0 {
                 if health <= 0 {
-                    state = .dying(timer: 1.0)
+                    state = .dying(timer: type.deathDuration)
                     animationFrame = 0
                 } else {
                     state = .chasing
@@ -370,7 +398,7 @@ struct Enemy: Identifiable {
         if health <= 0 {
             // Go directly to dying — don't allow hurt-loop to prevent death
             health = 0
-            state = .dying(timer: 1.0)
+            state = .dying(timer: type.deathDuration)
             animationFrame = 0
             return
         }

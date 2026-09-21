@@ -221,7 +221,8 @@ final class MetalRenderer {
 
     /// Encode and present one frame into the view's current drawable.
     func draw(in view: MTKView, player: Player, world: GameWorld, enemies: [Enemy], items: [Item],
-              projectiles: [Projectile], explosions: [Explosion], elapsedTime: Double, effects: PostEffects) {
+              projectiles: [Projectile], explosions: [Explosion], hitSplashes: [HitSplash] = [],
+              elapsedTime: Double, effects: PostEffects) {
         inflight.wait()
         guard let drawable = view.currentDrawable,
               let commandBuffer = commandQueue.makeCommandBuffer() else {
@@ -239,7 +240,7 @@ final class MetalRenderer {
         fillUniforms(slot: slot, player: player, world: world, torchCount: torchCount,
                      portalFrame: portalFrame, elapsedTime: elapsedTime)
         let spriteCount = fillSprites(slot: slot, player: player, enemies: enemies, items: items,
-                                      projectiles: projectiles, explosions: explosions)
+                                      projectiles: projectiles, explosions: explosions, hitSplashes: hitSplashes)
         fillPost(slot: slot, effects: effects)
 
         let uniforms = uniformsBuffers[slot]
@@ -418,9 +419,9 @@ final class MetalRenderer {
     /// Project every visible sprite to the screen and write the list, nearest first,
     /// with the weapon overlay in front. Returns the number of instances written.
     private func fillSprites(slot: Int, player: Player, enemies: [Enemy], items: [Item],
-                             projectiles: [Projectile], explosions: [Explosion]) -> Int {
+                             projectiles: [Projectile], explosions: [Explosion], hitSplashes: [HitSplash]) -> Int {
         var candidates: [Candidate] = []
-        candidates.reserveCapacity(enemies.count + items.count + projectiles.count + explosions.count)
+        candidates.reserveCapacity(enemies.count + items.count + projectiles.count + explosions.count + hitSplashes.count)
 
         let w = width, h = height, halfH = h / 2
         let invDet = 1.0 / (player.planeX * player.dirY - player.dirX * player.planeY)
@@ -492,6 +493,12 @@ final class MetalRenderer {
             let frame = min(explosionFrames - 1, Int(explosion.progress * Double(explosionFrames)))
             let location = spriteAtlas.location(.explosions, frame: frame)
             add(x: explosion.x, y: explosion.y, location: location, vOffset: 0.05, scale: 1.2, fullBright: true)
+        }
+
+        for splash in hitSplashes {
+            let frame = splash.variant * 4 + min(3, Int(splash.progress * 4))
+            let location = spriteAtlas.location(.hitSplashes, frame: frame)
+            add(x: splash.x, y: splash.y, location: location, vOffset: -0.05, scale: 0.4, fullBright: false)
         }
 
         // Nearest first: the kernel keeps the first opaque texel that passes the z test

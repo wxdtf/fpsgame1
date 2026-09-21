@@ -1,7 +1,7 @@
 """Demon: a hulking pink beast that is mostly jaws — hunched, spined back, small burning eyes, charges to bite.
 
 Canvas 96x96, turntable rig. Frames per view: 0 idle, 1-3 lumber, 4-5 bite, 6 hurt;
-front only: 7 recoil, 8 collapsing, 9 corpse.
+front only: 7-12 the six death frames (see death_frames).
 """
 
 from pixelart import Canvas, Rig, ramp, rgb, turntable_frames
@@ -207,6 +207,7 @@ def draw_standing(frame, turn):
 
 
 def draw_recoil():
+    """Death 0: the killing shot lands mid-charge, jaws wide."""
     cv = draw_standing(6, 0)
     out = Canvas(W, H)
     for y in range(H):
@@ -218,12 +219,37 @@ def draw_recoil():
     for (bx, by, r) in ((40, 54, 6), (32, 48, 3), (50, 46, 3)):
         out.paint(out.mask().circle(bx, by, r), BLOOD)
     out.paint(out.mask().circle(38, 56, 3), BLOOD_DARK)
+    for k in range(6):
+        out.set(30 - k * 2, 50 - (k % 3) * 2, BLOOD if k % 2 else BLOOD_DARK)
     out.outline(OUTLINE)
     return out
 
 
+def draw_rear():
+    """Death 1: rears up on its hind legs, forelegs pawing the air, bellowing."""
+    cv = Canvas(W, H)
+    rig = Rig(cv, 0, CX)
+    ground = 94
+    hipY = 62
+    leg(rig, +1, hipY, ground, 3)
+    leg(rig, -1, hipY, ground, -3)
+    body(rig, hipY)
+    shY = hipY - 26
+    arm(rig, +1, (26, shY, 4), (40, shY - 8, 8), (44, shY - 22, 12))
+    arm(rig, -1, (-26, shY, 4), (-40, shY - 6, 8), (-42, shY - 20, 12))
+    jaws(rig, hipY - 30, 1.0, hurt=True)
+    rig.render()
+    for (bx, by, r) in ((CX - 6, hipY - 10, 5), (CX + 8, hipY - 4, 3), (CX - 14, hipY - 18, 2)):
+        cv.paint(cv.mask().circle(bx, by, r), BLOOD)
+    cv.paint(cv.mask().circle(CX - 4, hipY - 7, 3), BLOOD_DARK)
+    for k in range(5):
+        cv.set(CX - 10 - k * 3, hipY - 14 - k * 2, BLOOD)
+    cv.outline(OUTLINE)
+    return cv
+
+
 def draw_falling():
-    """Frame 8: front legs give way, the head crashes down toward the floor."""
+    """Death 2: front legs give way, the head crashes down toward the floor."""
     cv = Canvas(W, H)
     ground = 94
     hipY = 74
@@ -253,12 +279,74 @@ def draw_falling():
     return cv
 
 
-def draw_corpse():
-    """Frame 9: a heap on the floor, jaws slack, spines up."""
+def draw_headplant():
+    """Death 3: muzzle ploughing into the floor, hindquarters still up."""
+    cv = Canvas(W, H)
+    ground = 94
+    hipY = 70
+    rig = Rig(cv, 0, CX)
+    leg(rig, -1, hipY - 4, ground, -3)
+    leg(rig, +1, hipY - 2, ground, 3)
+    rig.render()
+    m = cv.mask()
+    m.oval(52, hipY - 2, 30, 16)
+    m.oval(44, hipY - 14, 20, 12)
+    cv.part(m, HIDE, thickness=4, rim=3)
+    m = cv.mask().oval(50, hipY + 6, 14, 6)
+    cv.part(m, UNDER, thickness=3, rim=0, shadow=1)
+    for k in range(6):
+        sx = 34 + k * 6
+        sy = hipY - 24 + k * 3
+        m = cv.mask().poly([(sx - 2, sy + 6), (sx + 2, sy + 6), (sx - 1, sy - 3)])
+        cv.part(m, SPINE, thickness=1, rim=1, shadow=1)
+    rig = Rig(cv, 0, CX)
+    arm(rig, -1, (-22, hipY - 2, 0), (-36, hipY + 4, 4), (-42, hipY + 12, 8))
+    arm(rig, +1, (26, hipY - 2, 0), (40, hipY + 4, 4), (44, hipY + 12, 8))
+    jaws(rig, hipY + 6, 0.5, hurt=True)
+    rig.render()
+    cv.paint(cv.mask().circle(52, hipY - 6, 5), BLOOD)
+    cv.paint(cv.mask().circle(58, hipY - 2, 3), BLOOD_DARK)
+    dust = (rgb(96, 80, 70), rgb(128, 108, 96))
+    for k, (dx, dy, r) in enumerate(((20, ground - 4, 3), (14, ground - 8, 2), (76, ground - 4, 3), (84, ground - 7, 2))):
+        cv.paint(cv.mask().circle(dx, dy, r), dust[k % 2])
+    cv.outline(OUTLINE)
+    return cv
+
+
+def draw_roll():
+    """Death 4: rolls over onto its side, legs kicking, blood thrown up."""
+    body = draw_corpse(pool=False)
+    cv = Canvas(W, H)
+    cv.blit(body, 0, -6)
+    ground = 92
+    cv.paint(cv.mask().oval(48, ground, 30, 2), BLOOD_DARK)
+    # hind legs kicking upward off the heap
+    m = cv.mask().tapered(30, ground - 22, 7, 20, ground - 36, 5)
+    cv.part(m, HIDE, thickness=3)
+    m = cv.mask().tapered(20, ground - 36, 5, 10, ground - 44, 4)
+    cv.part(m, HIDE, thickness=3)
+    m = cv.mask().poly([(4, ground - 48), (14, ground - 46), (13, ground - 40), (5, ground - 42)])
+    cv.part(m, HOOF, thickness=2)
+    m = cv.mask().tapered(36, ground - 20, 6, 28, ground - 30, 5)
+    cv.part(m, HIDE, thickness=3, tint=BACK)
+    m = cv.mask().poly([(22, ground - 36), (30, ground - 34), (29, ground - 28), (21, ground - 30)])
+    cv.part(m, HOOF, thickness=2, tint=BACK)
+    for k in range(8):
+        cv.set(46 + k * 4, ground - 30 - (k % 3) * 4, BLOOD if k % 2 else BLOOD_DARK)
+    dust = (rgb(96, 80, 70), rgb(128, 108, 96))
+    for k, (dx, dy, r) in enumerate(((10, ground - 6, 3), (88, ground - 5, 3), (92, ground - 10, 2))):
+        cv.paint(cv.mask().circle(dx, dy, r), dust[k % 2])
+    cv.outline(OUTLINE)
+    return cv
+
+
+def draw_corpse(pool=True):
+    """Death 5: a heap on the floor, jaws slack, spines up."""
     cv = Canvas(W, H)
     ground = 92
-    cv.paint(cv.mask().oval(48, ground, 38, 3), BLOOD_DARK)
-    cv.paint(cv.mask().oval(46, ground - 1, 26, 2), BLOOD)
+    if pool:
+        cv.paint(cv.mask().oval(48, ground, 38, 3), BLOOD_DARK)
+        cv.paint(cv.mask().oval(46, ground - 1, 26, 2), BLOOD)
     m = cv.mask().tapered(30, ground - 12, 7, 12, ground - 8, 5)
     cv.part(m, HIDE, thickness=3, tint=BACK)
     m = cv.mask().poly([(4, ground - 12), (14, ground - 12), (15, ground - 5), (3, ground - 5)])
@@ -293,5 +381,10 @@ def draw_corpse():
     return cv
 
 
+def death_frames():
+    """Shot mid-charge: rears up, crashes muzzle first, rolls onto its side."""
+    return [draw_recoil(), draw_rear(), draw_falling(), draw_headplant(), draw_roll(), draw_corpse()]
+
+
 def frames():
-    return turntable_frames(draw_standing, lambda: [draw_recoil(), draw_falling(), draw_corpse()])
+    return turntable_frames(draw_standing, death_frames)

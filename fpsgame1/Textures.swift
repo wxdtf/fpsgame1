@@ -544,72 +544,93 @@ final class TextureAtlas {
         return true
     }
 
-    private func generateExitPortalTexture(time: Double) -> [UInt32] {
+    /// Animated exit portal. A line-for-line port of tools/sprite_art/portal.py (the
+    /// design reference with previews): a riveted iron frame with four pulsing rune
+    /// plates, a three-armed vortex spiralling into a white-green core, sparks
+    /// orbiting inward, and "EXIT" over it. Every time term uses an angular
+    /// frequency that is a multiple of 0.5 rad/s, so it loops every 4π seconds.
+    private func generateExitPortalTexture(time t: Double) -> [UInt32] {
         var pixels = [UInt32](repeating: 0, count: size * size)
-
         let cx = Double(size) / 2.0
         let cy = Double(size) / 2.0
-        let maxR = Double(size) / 2.0 - 3.0
-        let rotOffset = time * 1.5  // Swirl rotation speed
+        let maxR = Double(size) / 2.0 - 5.0
+        let frameW = 5
+        let rivets = [(2, 2), (61, 2), (2, 61), (61, 61), (31, 2), (2, 31), (61, 31), (31, 61)]
 
         for y in 0..<size {
             for x in 0..<size {
-                // Dark metal frame border
-                if x < 3 || x >= size - 3 || y < 3 || y >= size - 3 {
+                // --- iron frame with rivets and rune plates ---
+                if x < frameW || x >= size - frameW || y < frameW || y >= size - frameW {
                     let n = noise01(x, y, 700)
-                    let v = 30 + Int(n * 15)
-                    pixels[y * size + x] = c(v, v + 5, v)
-                    if x == 3 || x == size - 4 || y == 3 || y == size - 4 {
-                        let pulse = 0.7 + 0.3 * sin(time * 3.0)
-                        pixels[y * size + x] = c(Int(20.0 * pulse), Int(80.0 * pulse), Int(30.0 * pulse))
+                    var v = 34 + Int(n * 14)
+                    let edgeIn = min(x, y, size - 1 - x, size - 1 - y)
+                    if edgeIn == 0 { v += 22 } else if edgeIn == frameW - 1 { v -= 12 }
+                    var r = v, g = v + 4, b = v + 8
+                    for (rx, ry) in rivets where abs(x - rx) <= 1 && abs(y - ry) <= 1 {
+                        let bright = (x == rx && y == ry) ? 70 : 52
+                        r = bright; g = bright + 4; b = bright + 6
                     }
+                    let pulse = 0.55 + 0.45 * sin(t * 3.0)
+                    let horizontalPlate = (y == 1 || y == 2 || y == 61 || y == 62) && x >= 22 && x <= 41
+                    let verticalPlate = (x == 1 || x == 2 || x == 61 || x == 62) && y >= 22 && y <= 41
+                    if horizontalPlate || verticalPlate {
+                        let k = (horizontalPlate ? x : y) - 22
+                        if k % 5 >= 1 && k % 5 <= 3 {
+                            r = Int(20 + 40 * pulse); g = Int(90 + 140 * pulse); b = Int(40 + 60 * pulse)
+                        }
+                    }
+                    if edgeIn == frameW - 1 { g += Int(30 * pulse) }
+                    pixels[y * size + x] = c(r, g, b)
                     continue
                 }
 
-                let dx = Double(x) - cx
-                let dy = Double(y) - cy
+                let dx = Double(x) + 0.5 - cx
+                let dy = Double(y) + 0.5 - cy
                 let dist = sqrt(dx * dx + dy * dy)
-                let normDist = dist / maxR
-
-                if normDist > 1.0 {
-                    pixels[y * size + x] = c(15, 20, 15)
+                let nd = dist / maxR
+                if nd > 1.0 {
+                    // stone lip between the frame and the vortex
+                    let n = noise01(x, y, 90)
+                    let v = 22 + Int(n * 10)
+                    pixels[y * size + x] = c(v, v + 3, v + 2)
                     continue
                 }
 
-                // Animated swirling pattern — rotate with time
-                let angle = atan2(dy, dx) + rotOffset
-                let swirl1 = sin(angle * 3.0 + dist * 0.8 + time * 2.0) * 0.5 + 0.5
-                let swirl2 = sin(angle * 5.0 - dist * 1.2 + time * 1.5) * 0.5 + 0.5
-                let swirl3 = cos(angle * 2.0 + dist * 0.5 - time * 3.0) * 0.5 + 0.5
+                // --- vortex ---
+                let ang = atan2(dy, dx)
+                let swirl1 = 0.5 + 0.5 * sin(ang * 3.0 + dist * 0.45 - t * 2.0)
+                let swirl2 = 0.5 + 0.5 * sin(ang * 5.0 - dist * 0.7 + t * 1.5)
+                let rings = 0.5 + 0.5 * sin(dist * 1.4 - t * 3.0)
+                let depth = pow(1.0 - nd, 1.6)
+                let pulse = 0.85 + 0.15 * sin(t * 4.0)
+                let core = exp(-(dist * dist) / 18.0) * pulse
 
-                // Core glow — pulsing
-                let pulse = 0.85 + 0.15 * sin(time * 4.0)
-                let coreBright = max(0.0, 1.0 - normDist) * pulse
-                let edgeGlow = normDist > 0.7 ? (normDist - 0.7) / 0.3 : 0.0
+                let v = 0.15 + 0.55 * swirl1 * depth + 0.2 * swirl2 * (1.0 - depth) + 0.15 * rings * depth
+                var r = 10 + 40 * v + 120 * core
+                var g = 40 + 170 * v + 200 * core
+                var b = 30 + 90 * v * (1.0 - depth) + 60 * swirl2 + 190 * core
+                let edge = nd > 0.78 ? 1.0 : 0.0
+                let ringGlow = edge * (0.5 + 0.5 * sin(t * 5.0 + nd * 6.0))
+                r += 60 * ringGlow
+                g += 90 * ringGlow
+                b += 40 * ringGlow
 
-                let baseG = Int(80.0 + coreBright * 175.0 + swirl1 * 40.0)
-                let baseR = Int(10.0 + coreBright * 60.0 + swirl2 * 20.0)
-                let baseB = Int(20.0 + coreBright * 80.0 + swirl3 * 30.0)
-
-                let ringPulse = 0.8 + 0.2 * sin(time * 5.0 + normDist * 6.0)
-                let ringR = Int(edgeGlow * 80.0 * ringPulse)
-                let ringG = Int(edgeGlow * 200.0 * ringPulse)
-                let ringB = Int(edgeGlow * 100.0 * ringPulse)
-
-                let hotspot = normDist < 0.2 ? (0.2 - normDist) / 0.2 : 0.0
-                let hotR = Int(hotspot * 100.0 * pulse)
-                let hotG = Int(hotspot * 255.0 * pulse)
-                let hotB = Int(hotspot * 150.0 * pulse)
-
-                pixels[y * size + x] = c(
-                    min(255, baseR + ringR + hotR),
-                    min(255, baseG + ringG + hotG),
-                    min(255, baseB + ringB + hotB)
-                )
+                // --- sparks orbiting inward ---
+                for k in 0..<6 {
+                    let phase = (t * 0.5 + Double(k) / 6.0).truncatingRemainder(dividingBy: 1.0)
+                    let sr = 4.0 + (1.0 - phase) * (maxR - 6.0)
+                    let sa = t * 1.5 + Double(k) * 1.0472 + phase * 6.0
+                    let sx = cx + cos(sa) * sr
+                    let sy = cy + sin(sa) * sr
+                    if abs(Double(x) + 0.5 - sx) < 1.0 && abs(Double(y) + 0.5 - sy) < 1.0 {
+                        r = 230; g = 255; b = 240
+                    }
+                }
+                pixels[y * size + x] = c(Int(r), Int(g), Int(b))
             }
         }
 
-        // Add "EXIT" text with pulsing brightness
+        // "EXIT" over the vortex, pulsing, with a dark outline
         let letters: [[[Int]]] = [
             [[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,1,1]],
             [[1,0,1],[0,1,0],[0,1,0],[0,1,0],[1,0,1]],
@@ -618,24 +639,30 @@ final class TextureAtlas {
         ]
         let textStartX = size / 2 - 9
         let textStartY = size / 2 - 3
-        let textPulse = 0.8 + 0.2 * sin(time * 6.0)
+        let textPulse = 0.8 + 0.2 * sin(t * 6.0)
         let textColor = c(Int(255.0 * textPulse), Int(255.0 * textPulse), Int(230.0 * textPulse))
-
-        for (li, letter) in letters.enumerated() {
-            let ox = textStartX + li * 5
-            for (ry, row) in letter.enumerated() {
-                for (rx, val) in row.enumerated() {
-                    if val == 1 {
-                        let px = ox + rx
-                        let py = textStartY + ry
-                        if px >= 0 && px < size && py >= 0 && py < size {
-                            pixels[py * size + px] = textColor
+        let dark = c(6, 20, 10)
+        func put(_ px: Int, _ py: Int, _ color: UInt32) {
+            if px >= 0 && px < size && py >= 0 && py < size { pixels[py * size + px] = color }
+        }
+        for pass in 0..<2 {
+            for (li, letter) in letters.enumerated() {
+                let ox = textStartX + li * 5
+                for (ry, row) in letter.enumerated() {
+                    for (rx, val) in row.enumerated() where val == 1 {
+                        if pass == 0 {
+                            for ddx in -1...1 {
+                                for ddy in -1...1 where ddx != 0 || ddy != 0 {
+                                    put(ox + rx + ddx, textStartY + ry + ddy, dark)
+                                }
+                            }
+                        } else {
+                            put(ox + rx, textStartY + ry, textColor)
                         }
                     }
                 }
             }
         }
-
         return pixels
     }
 

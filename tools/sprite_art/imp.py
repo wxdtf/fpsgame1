@@ -2,8 +2,7 @@
 
 Canvas 64x96, feet on the bottom row. Built on the turntable rig: one body
 definition projected to the front, 3/4, side, back-3/4 and back views.
-Frames per view: 0 idle, 1-3 walk, 4-5 attack, 6 hurt; front only: 7 recoil,
-8 falling, 9 corpse.
+Frames per view: 0 idle, 1-3 walk, 4-5 attack, 6 hurt; front only: 7-12 the six death frames (see death_frames).
 """
 
 from pixelart import Canvas, Rig, ramp, rgb, turntable_frames
@@ -285,7 +284,7 @@ def draw_standing(frame, turn):
 
 
 def draw_recoil():
-    """Frame 7: knocked back, chest wound."""
+    """Death 0: the killing shot lands — knocked back, chest torn open."""
     cv = draw_standing(6, 0)
     out = Canvas(W, H)
     for y in range(H):
@@ -297,12 +296,59 @@ def draw_recoil():
     for (bx, by, r) in ((28, 48, 5), (22, 44, 3), (33, 42, 2)):
         out.paint(out.mask().circle(bx, by, r), BLOOD)
     out.paint(out.mask().circle(27, 49, 2), BLOOD_DARK)
+    # spray leaving the wound toward the shooter
+    for k in range(6):
+        out.set(20 - k * 2, 46 - (k % 3) * 2, BLOOD if k % 2 else BLOOD_DARK)
     out.outline(OUTLINE)
     return out
 
 
+def draw_twist():
+    """Death 1: spun sideways by the impact, arms flung up, knees starting to go."""
+    cv = Canvas(W, H)
+    rig = Rig(cv, 90, CX)
+    ground = 94
+    hipY = 64
+    leg(rig, +1, hipY, ground, 5)
+    leg(rig, -1, hipY, ground, -5)
+    torso(rig, hipY, hunch=2)
+    shY = hipY - 20
+    arm(rig, +1, shY, raised=True)
+    arm(rig, -1, shY, raised=True)
+    head(rig, hipY - 28, open_mouth=True, hurt=True)
+    rig.render()
+    # the chest wound now faces screen-left (the creature's front)
+    for (bx, by, r) in ((CX - 9, hipY - 14, 4), (CX - 12, hipY - 9, 2)):
+        cv.paint(cv.mask().circle(bx, by, r), BLOOD)
+    cv.paint(cv.mask().circle(CX - 8, hipY - 12, 2), BLOOD_DARK)
+    for k in range(4):
+        cv.set(CX - 14 - k * 2, hipY - 16 + k, BLOOD)
+    cv.outline(OUTLINE)
+    return cv
+
+
+def draw_crumple():
+    """Death 2: turned almost away, legs folding, arms dropping."""
+    cv = Canvas(W, H)
+    rig = Rig(cv, 135, CX)
+    ground = 94
+    hipY = 72
+    leg(rig, +1, hipY, ground, 2)
+    leg(rig, -1, hipY, ground, -6)
+    torso(rig, hipY, hunch=3)
+    shY = hipY - 19
+    arm(rig, +1, shY, swing=3)
+    arm(rig, -1, shY, swing=-2)
+    head(rig, hipY - 27, open_mouth=True, hurt=True)
+    rig.render()
+    cv.paint(cv.mask().circle(CX + 3, hipY - 12, 3), BLOOD)
+    cv.paint(cv.mask().circle(CX + 6, hipY - 8, 2), BLOOD_DARK)
+    cv.outline(OUTLINE)
+    return cv
+
+
 def draw_falling():
-    """Frame 8: knees buckled, torso pitching forward-right, one arm reaching for the floor."""
+    """Death 3: knees buckled, torso pitching forward-right, one arm reaching for the floor."""
     cv = Canvas(W, H)
     ground = 94
     hipY = 74
@@ -346,12 +392,29 @@ def draw_falling():
     return cv
 
 
-def draw_corpse():
-    """Frame 9: face down on the floor, horns and spikes still recognisable."""
+def draw_impact():
+    """Death 4: hits the floor face first — the body bounces, dust and blood kick up."""
+    body = draw_corpse(pool=False)
+    cv = Canvas(W, H)
+    cv.blit(body, 0, -4)
+    ground = 92
+    cv.paint(cv.mask().oval(32, ground, 20, 2), BLOOD_DARK)
+    dust = (rgb(96, 80, 70), rgb(128, 108, 96))
+    for k, (dx, dy, r) in enumerate(((8, ground - 5, 3), (14, ground - 9, 2), (54, ground - 6, 3), (60, ground - 10, 2), (4, ground - 10, 1.5))):
+        cv.paint(cv.mask().circle(dx, dy, r), dust[k % 2])
+    for k in range(7):
+        cv.set(24 + k * 3, ground - 18 - (k % 3) * 3, BLOOD if k % 2 else BLOOD_DARK)
+    cv.outline(OUTLINE)
+    return cv
+
+
+def draw_corpse(pool=True):
+    """Death 5: face down on the floor, horns and spikes still recognisable."""
     cv = Canvas(W, H)
     ground = 92
-    cv.paint(cv.mask().oval(32, ground, 26, 3), BLOOD_DARK)
-    cv.paint(cv.mask().oval(30, ground - 1, 18, 2), BLOOD)
+    if pool:
+        cv.paint(cv.mask().oval(32, ground, 26, 3), BLOOD_DARK)
+        cv.paint(cv.mask().oval(30, ground - 1, 18, 2), BLOOD)
     m = cv.mask().tapered(16, ground - 10, 5, 6, ground - 4, 4)
     cv.part(m, SKIN, thickness=2, tint=BACK)
     m = cv.mask().tapered(22, ground - 8, 5, 12, ground - 3, 4)
@@ -384,5 +447,10 @@ def draw_corpse():
     return cv
 
 
+def death_frames():
+    """Shot in the chest, spun round by the hit, and dropped face first."""
+    return [draw_recoil(), draw_twist(), draw_crumple(), draw_falling(), draw_impact(), draw_corpse()]
+
+
 def frames():
-    return turntable_frames(draw_standing, lambda: [draw_recoil(), draw_falling(), draw_corpse()])
+    return turntable_frames(draw_standing, death_frames)
