@@ -113,7 +113,10 @@ final class GameSettings {
         sfxVolume = Self.clampVolume(number(Key.sfx, 1.0))
         musicVolume = Self.clampVolume(number(Key.music, 0.8))
         minimapDefault = defaults.object(forKey: Key.minimap) == nil ? true : defaults.bool(forKey: Key.minimap)
-        difficulty = Difficulty(rawValue: defaults.integer(forKey: Key.difficulty)) ?? .normal
+        // An absent key reads as 0, which would be the easiest skill, so check presence first
+        difficulty = defaults.object(forKey: Key.difficulty) == nil
+            ? .normal
+            : Difficulty(rawValue: defaults.integer(forKey: Key.difficulty)) ?? .normal
         applyVolumes()
     }
 
