@@ -11,6 +11,8 @@ enum GameStateType {
     case briefing
     case playing
     case paused
+    /// The options menu, opened from the title screen or the pause menu
+    case settings
     case dead
     case levelComplete
     case campaignComplete
@@ -99,6 +101,8 @@ final class GameEngine {
     private var navField: NavigationField
     /// The marine the player is running the campaign as
     private(set) var character: PlayerCharacter = .sarge
+    /// Skill level; applied when a level is loaded (enemy health) and on every hit taken
+    var difficulty: Difficulty = .normal
 
     var killCount: Int = 0
     var totalEnemies: Int = 0
@@ -230,7 +234,7 @@ final class GameEngine {
     }
 
     private func spawnEntities() {
-        let healthMult = GameConstants.difficultyHealthMultiplier(for: currentLevel)
+        let healthMult = GameConstants.difficultyHealthMultiplier(for: currentLevel) * difficulty.enemyHealthMultiplier
         enemies = levelData.enemies.map {
             var e = Enemy(type: $0.0, x: $0.1, y: $0.2)
             e.health = Int(Double(e.health) * healthMult)
@@ -267,12 +271,14 @@ final class GameEngine {
             firePlayerWeapon()
         }
 
-        // Weapon switch
+        // Weapon switch: a slot number, or cycling through the weapons the player owns
         if let switchTo = input.weaponSwitch {
             let types: [WeaponType] = [.fist, .pistol, .shotgun, .chaingun, .rocketLauncher]
             if switchTo >= 1 && switchTo <= types.count {
                 player.switchWeapon(to: types[switchTo - 1])
             }
+        } else if input.weaponCycle != 0, let next = cycledWeapon(by: input.weaponCycle) {
+            player.switchWeapon(to: next)
         }
 
         // Interaction (doors)
@@ -325,8 +331,8 @@ final class GameEngine {
                     let dy = enemies[i].y - player.y
                     let dist = sqrt(dx * dx + dy * dy)
 
-                    let dmgMult = GameConstants.difficultyDamageMultiplier(for: currentLevel)
-                    let spdMult = GameConstants.difficultySpeedMultiplier(for: currentLevel)
+                    let dmgMult = GameConstants.difficultyDamageMultiplier(for: currentLevel) * difficulty.playerDamageMultiplier
+                    let spdMult = GameConstants.difficultySpeedMultiplier(for: currentLevel) * difficulty.enemySpeedMultiplier
 
                     // Melee-only enemies always swing; bosses claw when close, throw plasma otherwise
                     let useMelee = !type.isRanged || (type.hasMeleeAttack && dist <= type.meleeRange)
@@ -830,6 +836,15 @@ final class GameEngine {
             time: elapsedTime
         ))
         state = .levelComplete
+    }
+
+    /// The next (+1) or previous (-1) weapon the player owns, in slot order, wrapping round
+    func cycledWeapon(by direction: Int) -> WeaponType? {
+        let order: [WeaponType] = [.fist, .pistol, .shotgun, .chaingun, .rocketLauncher]
+        let owned = order.filter { player.weapons.contains($0) }
+        guard owned.count > 1, let current = owned.firstIndex(of: player.currentWeapon) else { return nil }
+        let step = direction > 0 ? 1 : owned.count - 1
+        return owned[(current + step) % owned.count]
     }
 
     /// Enemies open unlocked doors that block their path (locked doors stay shut for them)

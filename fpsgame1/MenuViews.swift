@@ -6,7 +6,9 @@
 import SwiftUI
 
 struct TitleScreenView: View {
+    let settings: GameSettings
     let onStart: () -> Void
+    var onSettings: () -> Void = {}
     @State private var blinkVisible = true
     @State private var titleScale: CGFloat = 0.8
     @State private var flickerOpacity: Double = 1.0
@@ -58,17 +60,45 @@ struct TitleScreenView: View {
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
                         .opacity(blinkVisible ? 1.0 : 0.3)
+                        .onTapGesture { onStart() }
 
-                    VStack(spacing: 8) {
-                        controlHint("WASD", description: "Move")
-                        controlHint("MOUSE / TRACKPAD", description: "Look around")
-                        controlHint("SPACE / CLICK", description: "Shoot")
-                        controlHint("E", description: "Open doors")
-                        controlHint("1 - 5", description: "Switch weapons")
-                        controlHint("SHIFT", description: "Sprint")
-                        controlHint("ESC", description: "Pause")
+                    // Skill level: ← → cycle it, remembered between launches
+                    VStack(spacing: 4) {
+                        HStack(spacing: 14) {
+                            Text("\u{25C0}")
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(.gray)
+                                .onTapGesture { settings.setDifficulty(settings.difficulty.previous) }
+                            Text(settings.difficulty.name)
+                                .font(.system(size: 17, weight: .black, design: .monospaced))
+                                .foregroundColor(.orange)
+                                .frame(width: 300)
+                            Text("\u{25B6}")
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(.gray)
+                                .onTapGesture { settings.setDifficulty(settings.difficulty.next) }
+                        }
+                        Text(settings.difficulty.blurb)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.gray)
                     }
-                    .padding(.top, 10)
+                    .padding(.top, 4)
+
+                    Text("S - SETTINGS")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(.yellow)
+                        .onTapGesture { onSettings() }
+
+                    VStack(spacing: 6) {
+                        controlHint("WASD / LEFT STICK", description: "Move")
+                        controlHint("MOUSE / RIGHT STICK", description: "Look around")
+                        controlHint("SPACE / CLICK / RT", description: "Shoot")
+                        controlHint("E / X", description: "Open doors")
+                        controlHint("1 - 5 / LB RB", description: "Switch weapons")
+                        controlHint("SHIFT / L3", description: "Sprint")
+                        controlHint("ESC / MENU", description: "Pause")
+                    }
+                    .padding(.top, 6)
                 }
 
                 Spacer()
@@ -87,8 +117,20 @@ struct TitleScreenView: View {
                 blinkVisible.toggle()
             }
         }
-        .onTapGesture { onStart() }
-        .background(KeyPressHandler(onEnter: onStart))
+        .background(KeyPressHandler(onEnter: onStart, onKey: handleKey))
+    }
+
+    private func handleKey(_ keyCode: UInt16) {
+        switch keyCode {
+        case InputManager.keyLeft:
+            settings.setDifficulty(settings.difficulty.previous)
+        case InputManager.keyRight:
+            settings.setDifficulty(settings.difficulty.next)
+        case InputManager.keyS:
+            onSettings()
+        default:
+            break
+        }
     }
 
     private func controlHint(_ key: String, description: String) -> some View {
@@ -96,7 +138,7 @@ struct TitleScreenView: View {
             Text(key)
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundColor(.yellow)
-                .frame(width: 160, alignment: .trailing)
+                .frame(width: 200, alignment: .trailing)
             Text("-")
                 .foregroundColor(.gray)
             Text(description)
@@ -143,6 +185,8 @@ struct VictoryScreenView: View {
     let elapsedTime: Double
     var currentLevel: Int = 1
     var isFinalLevel: Bool = false
+    /// Best results for this level and skill, after this run was merged in
+    var record: RecordUpdate? = nil
     let onContinue: () -> Void
     @State private var opacity: Double = 0
 
@@ -160,6 +204,12 @@ struct VictoryScreenView: View {
                     statLine("KILLS", value: "\(killCount) / \(totalEnemies)")
                     statLine("TIME", value: formatTime(elapsedTime))
                     statLine("RATING", value: rating)
+                    if let record {
+                        statLine("BEST TIME", value: record.record.bestTime.map(formatTime) ?? "--:--",
+                                 badge: record.newBestTime ? "NEW RECORD!" : nil)
+                        statLine("BEST KILLS", value: record.record.bestKillPercent.map { "\($0)%" } ?? "--",
+                                 badge: record.newBestKills ? "NEW RECORD!" : nil)
+                    }
                 }
                 .padding(.vertical, 20)
 
@@ -182,16 +232,20 @@ struct VictoryScreenView: View {
         performanceRating(kills: killCount, totalEnemies: totalEnemies, time: elapsedTime, parTime: 120)
     }
 
-    private func statLine(_ label: String, value: String) -> some View {
+    private func statLine(_ label: String, value: String, badge: String? = nil) -> some View {
         HStack {
             Text(label)
                 .font(.system(size: 18, weight: .bold, design: .monospaced))
                 .foregroundColor(.gray)
-                .frame(width: 120, alignment: .trailing)
+                .frame(width: 140, alignment: .trailing)
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .monospaced))
                 .foregroundColor(.yellow)
-                .frame(width: 200, alignment: .leading)
+                .frame(width: 120, alignment: .leading)
+            Text(badge ?? "")
+                .font(.system(size: 13, weight: .black, design: .monospaced))
+                .foregroundColor(.red)
+                .frame(width: 130, alignment: .leading)
         }
     }
 
@@ -305,6 +359,7 @@ func formatClockTime(_ time: Double) -> String {
 struct BriefingScreenView: View {
     let level: Int
     var operative: PlayerCharacter? = nil
+    var difficulty: Difficulty? = nil
     let onStart: () -> Void
     @State private var visibleLines: Int = 0
     @State private var showPrompt: Bool = false
@@ -322,7 +377,8 @@ struct BriefingScreenView: View {
                 Spacer()
 
                 if let operative {
-                    Text("OPERATIVE: \(operative.name) \u{00B7} \(operative.title)")
+                    Text("OPERATIVE: \(operative.name) \u{00B7} \(operative.title)"
+                         + (difficulty.map { " \u{00B7} SKILL: \($0.name)" } ?? ""))
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .foregroundColor(operative.accentColor)
                         .padding(.bottom, 4)
@@ -389,25 +445,6 @@ struct BriefingScreenView: View {
     }
 }
 
-struct PauseOverlayView: View {
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.6).ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                Text("PAUSED")
-                    .font(.system(size: 42, weight: .black, design: .monospaced))
-                    .foregroundColor(.white)
-
-                Text("PRESS ESC TO RESUME")
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundColor(.gray)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
 // Helper to capture keys on menu screens: Enter fires onEnter, every other key goes to onKey
 struct KeyPressHandler: NSViewRepresentable {
     let onEnter: () -> Void
@@ -429,14 +466,25 @@ struct KeyPressHandler: NSViewRepresentable {
     }
 
     class KeyPressNSView: NSView {
-        var onEnter: (() -> Void)?
-        var onKey: ((UInt16) -> Void)?
+        var onEnter: (() -> Void)? { didSet { poller.onEnter = onEnter } }
+        var onKey: ((UInt16) -> Void)? { didSet { poller.onKey = onKey } }
+        private let poller = ControllerMenuPoller()
         override var acceptsFirstResponder: Bool { true }
         override func keyDown(with event: NSEvent) {
             if event.keyCode == 36 { // Return
                 onEnter?()
             } else {
                 onKey?(event.keyCode)
+            }
+        }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil {
+                poller.onEnter = onEnter
+                poller.onKey = onKey
+                poller.start()
+            } else {
+                poller.stop()
             }
         }
     }

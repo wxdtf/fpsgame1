@@ -57,6 +57,12 @@ final class GameViewModel {
     )
 
     let inputManager = InputManager()
+    /// Options menu, difficulty and their persistence
+    let settings = GameSettings.shared
+    /// Row highlighted on the pause menu (RESUME / SETTINGS / QUIT TO TITLE)
+    var pauseMenuIndex: Int = 0
+    /// Best-time / best-kills outcome of the level just finished, for the summary screen
+    var lastRecordUpdate: RecordUpdate?
 
     private var gameEngine: GameEngine?
     private var metalRenderer: MetalRenderer?
@@ -75,6 +81,9 @@ final class GameViewModel {
     private var prevWeaponSwitching: Bool = false
     private var prevGameState: GameStateType = .menu
     private var prevTabState: Bool = false
+    private var prevMenuKeys: Set<UInt16> = []
+    /// Where the settings screen returns to: the title or the pause menu
+    private var settingsReturnState: GameStateType = .menu
     private var levelTransitionTimer: Double = 0
     private var isTransitioningLevel: Bool = false
     private var hasStarted: Bool = false
@@ -103,6 +112,7 @@ final class GameViewModel {
     func chooseCharacter(_ chosen: PlayerCharacter) {
         character = chosen
         UserDefaults.standard.set(chosen.id, forKey: "selectedCharacter")
+        gameEngine?.difficulty = settings.difficulty
         gameEngine?.selectCharacter(chosen)
         doomFace = DoomFace(look: chosen.look)
         showBriefing()
@@ -111,6 +121,33 @@ final class GameViewModel {
     /// From the character screen: back to the title
     func backToMenu() {
         gameState = .menu
+    }
+
+    /// Open the options menu from the title screen or the pause menu
+    func showSettings() {
+        settingsReturnState = gameState == .paused ? .paused : .menu
+        gameState = .settings
+    }
+
+    /// Close the options menu and go back where it was opened from
+    func closeSettings() {
+        clearInput()
+        prevMenuKeys = []
+        pauseMenuIndex = 0
+        gameState = settingsReturnState
+    }
+
+    /// From the pause menu: abandon the run and return to the title screen
+    func quitToTitle() {
+        clearInput()
+        prevMenuKeys = []
+        gameEngine?.resetToMenu()
+        audio.stopBGM()
+        levelResults = []
+        lastRecordUpdate = nil
+        prevGameState = .menu
+        gameState = .menu
+        currentLevel = 1
     }
 
     /// Called when player presses enter on the briefing screen
@@ -131,6 +168,7 @@ final class GameViewModel {
         gameState = .playing  // Explicitly exit briefing state
         levelTransitionOpacity = 0
         isTransitioningLevel = false
+        showMinimap = settings.minimapDefault
 
         // Try Metal renderer first, fall back to CPU
         if metalRenderer == nil && cpuRenderer == nil {
@@ -225,6 +263,7 @@ final class GameViewModel {
         gameState = .playing
         levelTransitionOpacity = 0
         isTransitioningLevel = false
+        showMinimap = settings.minimapDefault
         if useGPU {
             metalRenderer?.uploadWorldData(world: engine.world)
         }
@@ -249,6 +288,8 @@ final class GameViewModel {
         guard let engine = gameEngine else { return }
         if engine.state == .playing {
             engine.state = .paused
+            pauseMenuIndex = 0
+            prevMenuKeys = inputManager.keys
         } else if engine.state == .paused {
             engine.state = .playing
             lastFrameTime = CACurrentMediaTime()
@@ -365,6 +406,9 @@ final class GameViewModel {
         // Clamp delta to prevent huge jumps
         deltaTime = min(deltaTime, 1.0 / 20.0)
 
+        inputManager.pollController()
+        inputManager.mouseSensitivity = settings.mouseSensitivity
+
         // Check ESC with edge detection (trigger on press, not hold)
         let escapeDown = inputManager.keys.contains(InputManager.keyEscape)
         let escapeJustPressed = escapeDown && !prevEscapeState
@@ -376,6 +420,11 @@ final class GameViewModel {
                 updateUIState()
                 return false
             }
+        }
+
+        if engine.state == .paused {
+            handlePauseMenu()
+            if gameState == .settings || gameState == .menu { return false }
         }
 
         if engine.state == .playing {
@@ -480,6 +529,9 @@ final class GameViewModel {
             case .levelComplete:
                 audio.stopBGM()
                 audio.playLevelComplete()
+                if let result = engine.levelResults.last {
+                    lastRecordUpdate = RecordStore.shared.submit(result, difficulty: settings.difficulty)
+                }
                 // Start fade-to-black transition
                 isTransitioningLevel = true
                 levelTransitionTimer = 0
@@ -521,10 +573,31 @@ final class GameViewModel {
         return engine.state == .playing || isDying
     }
 
+    /// Pause menu navigation from the keys the game view still receives while paused
+    /// (arrows or W/S move, Enter or Space confirm; the controller feeds the same keys)
+    private func handlePauseMenu() {
+        let keys = inputManager.keys
+        let pressed = keys.subtracting(prevMenuKeys)
+        prevMenuKeys = keys
+        let count = PauseOverlayView.items.count
+        if pressed.contains(InputManager.keyUp) || pressed.contains(InputManager.keyW) {
+            pauseMenuIndex = (pauseMenuIndex + count - 1) % count
+        }
+        if pressed.contains(InputManager.keyDown) || pressed.contains(InputManager.keyS) {
+            pauseMenuIndex = (pauseMenuIndex + 1) % count
+        }
+        guard pressed.contains(InputManager.keyReturn) || pressed.contains(InputManager.keySpace) else { return }
+        switch pauseMenuIndex {
+        case 0: togglePause()
+        case 1: showSettings()
+        default: quitToTitle()
+        }
+    }
+
     private func updateUIState() {
         guard let engine = gameEngine else { return }
         // Don't overwrite menu flow states — they're managed by the view model
-        if gameState == .briefing || gameState == .characterSelect { return }
+        if gameState == .briefing || gameState == .characterSelect || gameState == .settings { return }
         gameState = engine.state
         health = engine.player.health
         armor = engine.player.armor

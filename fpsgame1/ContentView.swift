@@ -16,9 +16,14 @@ struct ContentView: View {
 
             switch viewModel.gameState {
             case .menu:
-                TitleScreenView(onStart: {
-                    viewModel.showCharacterSelect()
-                })
+                TitleScreenView(
+                    settings: viewModel.settings,
+                    onStart: { viewModel.showCharacterSelect() },
+                    onSettings: { viewModel.showSettings() }
+                )
+
+            case .settings:
+                SettingsView(settings: viewModel.settings, onBack: { viewModel.closeSettings() })
 
             case .characterSelect:
                 CharacterSelectView(
@@ -28,7 +33,8 @@ struct ContentView: View {
                 )
 
             case .briefing:
-                BriefingScreenView(level: viewModel.currentLevel, operative: viewModel.character, onStart: {
+                BriefingScreenView(level: viewModel.currentLevel, operative: viewModel.character,
+                                   difficulty: viewModel.settings.difficulty, onStart: {
                     viewModel.startFromBriefing()
                 })
 
@@ -37,7 +43,7 @@ struct ContentView: View {
 
             case .paused:
                 gamePlayView
-                PauseOverlayView()
+                PauseOverlayView(selectedIndex: viewModel.pauseMenuIndex)
 
             case .dead:
                 DeathScreenView(onRestart: {
@@ -51,6 +57,7 @@ struct ContentView: View {
                     elapsedTime: viewModel.elapsedTime,
                     currentLevel: viewModel.currentLevel,
                     isFinalLevel: viewModel.isFinalLevel,
+                    record: viewModel.lastRecordUpdate,
                     onContinue: {
                         viewModel.advanceToNextLevel()
                     }
