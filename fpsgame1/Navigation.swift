@@ -42,12 +42,12 @@ struct NavigationField {
     }
 
     /// Whether an enemy may walk through the tile. Enemies can open unlocked doors,
-    /// so those always count as passable; locked doors only count once open.
+    /// so those always count as passable; locked and secret doors only count once open.
     static func isTraversable(world: GameWorld, x: Int, y: Int) -> Bool {
         switch world.tileAt(x: x, y: y) {
         case .empty, .damageFloor, .door:
             return true
-        case .lockedDoorRed, .lockedDoorBlue, .lockedDoorYellow:
+        case .lockedDoorRed, .lockedDoorBlue, .lockedDoorYellow, .secretBrick, .secretMetal, .secretTech:
             if let idx = world.doorAt(x: x, y: y) {
                 return world.doors[idx].openAmount >= 0.8
             }

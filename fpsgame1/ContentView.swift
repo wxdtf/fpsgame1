@@ -57,6 +57,7 @@ struct ContentView: View {
                     elapsedTime: viewModel.elapsedTime,
                     currentLevel: viewModel.currentLevel,
                     isFinalLevel: viewModel.isFinalLevel,
+                    result: viewModel.lastLevelResult,
                     record: viewModel.lastRecordUpdate,
                     onContinue: {
                         viewModel.advanceToNextLevel()

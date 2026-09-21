@@ -84,6 +84,15 @@ struct LevelResult {
     let kills: Int
     let totalEnemies: Int
     let time: Double
+    var secretsFound: Int = 0
+    var totalSecrets: Int = 0
+    /// Pickups collected out of the ones placed in the level (enemy drops not counted)
+    var itemsCollected: Int = 0
+    var totalItems: Int = 0
+    var parTime: Double = 120
+
+    var killPercent: Int { totalEnemies > 0 ? kills * 100 / totalEnemies : 100 }
+    var itemPercent: Int { totalItems > 0 ? itemsCollected * 100 / totalItems : 100 }
 }
 
 final class GameEngine {
@@ -138,6 +147,13 @@ final class GameEngine {
     var enemyAttackedThisFrame: EnemyType? = nil
     /// A rocket detonated this frame (plays the explosion)
     var explosionThisFrame: Bool = false
+    var secretFoundThisFrame: Bool = false
+    /// Secret trigger tiles (y * width + x) the player has stepped on this level
+    private(set) var secretsFound: Set<Int> = []
+    var totalSecrets: Int { levelData.secrets.count }
+    /// How many items the level placed; anything after them in `items` is an enemy drop
+    private(set) var placedItemCount: Int = 0
+    var itemsCollected: Int { items.prefix(placedItemCount).filter { $0.isCollected }.count }
 
     init() {
         let data = GameWorld.levelData(for: 1)
@@ -152,6 +168,7 @@ final class GameEngine {
         player.applyCharacter(character)
         spawnEntities()
         totalEnemies = enemies.count
+        placedItemCount = items.count
         spawnInvincibilityTimer = 1.5
     }
 
@@ -228,9 +245,11 @@ final class GameEngine {
         statusMessageTimer = 0
         levelNameTimer = 3.0
         exploredTiles = []
+        secretsFound = []
         spawnInvincibilityTimer = 1.5
         spawnEntities()
         totalEnemies = enemies.count
+        placedItemCount = items.count
     }
 
     private func spawnEntities() {
@@ -254,6 +273,7 @@ final class GameEngine {
         enemyHurtThisFrame = false
         enemyAttackedThisFrame = nil
         explosionThisFrame = false
+        secretFoundThisFrame = false
         spawnInvincibilityTimer = max(0, spawnInvincibilityTimer - deltaTime)
 
         // Player movement
@@ -396,6 +416,7 @@ final class GameEngine {
 
         // Explore tiles around player
         updateExploredTiles()
+        checkSecrets()
 
         // Update doors
         updateDoors(deltaTime: deltaTime)
@@ -833,9 +854,26 @@ final class GameEngine {
             title: title,
             kills: killCount,
             totalEnemies: totalEnemies,
-            time: elapsedTime
+            time: elapsedTime,
+            secretsFound: secretsFound.count,
+            totalSecrets: totalSecrets,
+            itemsCollected: itemsCollected,
+            totalItems: placedItemCount,
+            parTime: levelData.parTime
         ))
         state = .levelComplete
+    }
+
+    /// Stepping onto a secret area's trigger tile for the first time counts it as found
+    private func checkSecrets() {
+        let tx = Int(player.x), ty = Int(player.y)
+        guard levelData.secrets.contains(where: { $0.0 == tx && $0.1 == ty }) else { return }
+        let key = ty * world.width + tx
+        guard !secretsFound.contains(key) else { return }
+        secretsFound.insert(key)
+        secretFoundThisFrame = true
+        statusMessage = "A SECRET IS REVEALED!"
+        statusMessageTimer = 2.5
     }
 
     /// The next (+1) or previous (-1) weapon the player owns, in slot order, wrapping round

@@ -134,6 +134,10 @@ final class AudioManager {
         playSound(generateBossRoar())
     }
 
+    func playSecretFound() {
+        playSound(generateSecretFound())
+    }
+
     func playLevelComplete() {
         playSound(generateLevelComplete())
     }
@@ -463,6 +467,18 @@ final class AudioManager {
             let attack = min(1.0, t / 0.08)
             let decay = max(0, 1.0 - max(0, t - 0.6) / 0.5)
             return (h1 + h2 + h3 + h5 + rattle) * attack * decay * 0.3
+        }
+    }
+
+    private func generateSecretFound() -> AVAudioPCMBuffer? {
+        // Quick two-note chime, the second an octave up, with a shimmer on top
+        return generateBuffer(duration: 0.45) { t in
+            let freq: Float = t < 0.18 ? 880 : 1760
+            let phase = t < 0.18 ? t : t - 0.18
+            let length: Float = t < 0.18 ? 0.18 : 0.27
+            let envelope = min(1.0, phase / 0.01) * max(0, 1.0 - phase / length)
+            let tone = sin(t * freq * 2 * Float.pi) + sin(t * freq * 3 * 2 * Float.pi) * 0.12
+            return tone * envelope * 0.25
         }
     }
 

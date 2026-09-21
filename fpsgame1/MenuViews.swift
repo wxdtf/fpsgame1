@@ -185,6 +185,8 @@ struct VictoryScreenView: View {
     let elapsedTime: Double
     var currentLevel: Int = 1
     var isFinalLevel: Bool = false
+    /// Full tally of the level just finished (secrets, items, par)
+    var result: LevelResult? = nil
     /// Best results for this level and skill, after this run was merged in
     var record: RecordUpdate? = nil
     let onContinue: () -> Void
@@ -202,7 +204,12 @@ struct VictoryScreenView: View {
 
                 VStack(spacing: 12) {
                     statLine("KILLS", value: "\(killCount) / \(totalEnemies)")
-                    statLine("TIME", value: formatTime(elapsedTime))
+                    if let result {
+                        statLine("ITEMS", value: "\(result.itemPercent)%")
+                        statLine("SECRETS", value: "\(result.secretsFound) / \(result.totalSecrets)",
+                                 badge: result.totalSecrets > 0 && result.secretsFound == result.totalSecrets ? "ALL FOUND" : nil)
+                    }
+                    statLine("TIME", value: formatTime(elapsedTime), badge: "PAR \(formatTime(parTime))")
                     statLine("RATING", value: rating)
                     if let record {
                         statLine("BEST TIME", value: record.record.bestTime.map(formatTime) ?? "--:--",
@@ -228,8 +235,10 @@ struct VictoryScreenView: View {
         .background(KeyPressHandler(onEnter: onContinue))
     }
 
+    private var parTime: Double { result?.parTime ?? 120 }
+
     private var rating: String {
-        performanceRating(kills: killCount, totalEnemies: totalEnemies, time: elapsedTime, parTime: 120)
+        performanceRating(kills: killCount, totalEnemies: totalEnemies, time: elapsedTime, parTime: parTime)
     }
 
     private func statLine(_ label: String, value: String, badge: String? = nil) -> some View {
@@ -266,6 +275,11 @@ struct CampaignCompleteView: View {
     private var totalKills: Int { results.reduce(0) { $0 + $1.kills } }
     private var totalEnemies: Int { results.reduce(0) { $0 + $1.totalEnemies } }
     private var totalTime: Double { results.reduce(0) { $0 + $1.time } }
+    private var totalPar: Double { results.reduce(0) { $0 + $1.parTime } }
+    private var totalSecrets: Int { results.reduce(0) { $0 + $1.totalSecrets } }
+    private var secretsFound: Int { results.reduce(0) { $0 + $1.secretsFound } }
+    private var totalItems: Int { results.reduce(0) { $0 + $1.totalItems } }
+    private var itemsCollected: Int { results.reduce(0) { $0 + $1.itemsCollected } }
 
     var body: some View {
         ZStack {
@@ -297,6 +311,10 @@ struct CampaignCompleteView: View {
                                 .font(.system(size: 14, weight: .bold, design: .monospaced))
                                 .foregroundColor(.yellow)
                                 .frame(width: 80, alignment: .trailing)
+                            Text("S \(result.secretsFound)/\(result.totalSecrets)")
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(.orange)
+                                .frame(width: 60, alignment: .trailing)
                         }
                     }
                 }
@@ -304,10 +322,12 @@ struct CampaignCompleteView: View {
 
                 VStack(spacing: 10) {
                     statLine("TOTAL KILLS", value: "\(totalKills) / \(totalEnemies)")
-                    statLine("TOTAL TIME", value: formatClockTime(totalTime))
+                    statLine("ITEMS", value: totalItems > 0 ? "\(itemsCollected * 100 / totalItems)%" : "--")
+                    statLine("SECRETS", value: "\(secretsFound) / \(totalSecrets)")
+                    statLine("TOTAL TIME", value: formatClockTime(totalTime) + "  (PAR \(formatClockTime(totalPar)))")
                     statLine("RATING", value: performanceRating(
                         kills: totalKills, totalEnemies: totalEnemies,
-                        time: totalTime, parTime: 120 * Double(max(1, results.count))))
+                        time: totalTime, parTime: totalPar > 0 ? totalPar : 120 * Double(max(1, results.count))))
                 }
 
                 Text("PRESS ENTER TO RETURN TO THE MENU")

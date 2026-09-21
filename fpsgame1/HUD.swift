@@ -272,9 +272,10 @@ struct MinimapView: View {
                     } else {
                         let color: Color
                         switch tile {
-                        case .brickWall, .brickTorch: color = Color(red: 0.5, green: 0.2, blue: 0.1)
-                        case .metalWall: color = .gray
-                        case .techWall: color = Color(red: 0.1, green: 0.3, blue: 0.5)
+                        // Secret doors keep their wall's colour so the map does not give them away
+                        case .brickWall, .brickTorch, .secretBrick: color = Color(red: 0.5, green: 0.2, blue: 0.1)
+                        case .metalWall, .secretMetal: color = .gray
+                        case .techWall, .secretTech: color = Color(red: 0.1, green: 0.3, blue: 0.5)
                         case .door: color = .yellow
                         case .exitPortal: color = Color(red: 0.0, green: 1.0, blue: 0.3)
                         case .lockedDoorRed: color = .red

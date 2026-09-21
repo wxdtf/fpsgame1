@@ -17,11 +17,17 @@ enum TileType: Int {
     case lockedDoorBlue = 8
     case lockedDoorYellow = 9
     case damageFloor = 10
+    /// Secret doors: a wall segment that slides open when used, textured like the
+    /// wall around it so it hides in plain sight
+    case secretBrick = 11
+    case secretMetal = 12
+    case secretTech = 13
 
     var isWall: Bool {
         switch self {
         case .empty, .door, .damageFloor: return false
         case .lockedDoorRed, .lockedDoorBlue, .lockedDoorYellow: return false
+        case .secretBrick, .secretMetal, .secretTech: return false
         default: return true
         }
     }
@@ -29,6 +35,14 @@ enum TileType: Int {
     var isDoor: Bool {
         switch self {
         case .door, .lockedDoorRed, .lockedDoorBlue, .lockedDoorYellow: return true
+        case .secretBrick, .secretMetal, .secretTech: return true
+        default: return false
+        }
+    }
+
+    var isSecretDoor: Bool {
+        switch self {
+        case .secretBrick, .secretMetal, .secretTech: return true
         default: return false
         }
     }
@@ -46,6 +60,9 @@ enum TileType: Int {
         case .lockedDoorBlue: return TextureAtlas.lockedDoorBlue
         case .lockedDoorYellow: return TextureAtlas.lockedDoorYellow
         case .damageFloor: return 0
+        case .secretBrick: return TextureAtlas.brick
+        case .secretMetal: return TextureAtlas.metal
+        case .secretTech: return TextureAtlas.tech
         }
     }
 }
@@ -173,6 +190,11 @@ struct GameWorld {
         let enemies: [(EnemyType, Double, Double)]
         let items: [(ItemType, Double, Double)]
         let objective: MissionObjective
+        /// Time the rating counts as "par" for this level, in seconds
+        let parTime: Double
+        /// Tiles that count as finding a secret when the player steps on them (one per
+        /// secret area, just inside its secret door)
+        let secrets: [(Int, Int)]
     }
 
     static func createLevel(_ number: Int) -> GameWorld {
@@ -276,12 +298,13 @@ struct GameWorld {
     // ~12 enemies, introductory difficulty.
 
     private static func level1Data() -> LevelData {
-        // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal
+        // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal,
+        // 7-9=locked doors, 10=nukage, 11/12/13=secret door textured as brick/metal/tech
         let layout: [[Int]] = [
             //0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
             [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // 0
-            [2,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,2], // 1
-            [2,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,2], // 2
+            [2,0,12,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,2], // 1
+            [2,2,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,2], // 2
             [2,0,0,0,0,0,0,0,0,4,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,2,0,0,6,0,2], // 3  EXIT at (29,3)
             [2,0,0,0,2,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,2], // 4
             [2,0,0,0,0,0,0,0,0,2,0,0,2,0,0,0,2,0,0,0,0,0,0,2,0,0,0,0,2,0,0,2], // 5
@@ -296,7 +319,7 @@ struct GameWorld {
             [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,2,0,0,0,0,0,0,0,0,0,0,2], // 14
             [2,2,2,2,2,2,2,0,0,0,2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 15
             [2,0,0,0,0,0,2,0,0,0,0,0,0,2,0,0,2,2,2,2,2,2,4,2,2,2,2,0,0,0,0,2], // 16
-            [2,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,2,0,0,0,0,2], // 17
+            [2,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,2,0,0,0,0,2], // 17
             [2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,2,0,0,0,0,2], // 18
             [2,2,2,2,2,2,2,0,0,0,2,0,0,0,2,0,2,2,0,0,2,0,0,2,0,0,2,2,2,4,2,2], // 19
             [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 20
@@ -362,8 +385,13 @@ struct GameWorld {
                 (.berserkPack, 4.5, 17.5),
                 // Mission item — intel data in the command center (guarded by the demon)
                 (.intelData, 29.5, 8.5),
+                // Secret closet in the corner of the first room
+                (.armorVest(amount: 50), 1.5, 1.5),
             ],
-            objective: .retrieveIntel
+            objective: .retrieveIntel,
+            parTime: 120,
+            // The side room behind the sliding wall at (6,17) and the closet at (1,1)
+            secrets: [(5, 17), (1, 1)]
         )
     }
 
@@ -376,12 +404,13 @@ struct GameWorld {
     // ~17 enemies, moderate difficulty.
 
     private static func level2Data() -> LevelData {
-        // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal
+        // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal,
+        // 7-9=locked doors, 10=nukage, 11/12/13=secret door textured as brick/metal/tech
         let layout: [[Int]] = [
             //0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], // 0
-            [1,0,0,0,0,0,0,5,0,0,0,1,1,0,0,0,6,0,0,1,1,0,0,0,0,0,0,5,0,0,0,1], // 1  EXIT at (16,1)
-            [1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,1], // 2
+            [1,0,11,0,0,0,0,5,0,0,0,1,1,0,0,0,6,0,0,1,1,0,0,0,0,0,0,5,0,0,0,1], // 1  EXIT at (16,1)
+            [1,1,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,1], // 2
             [1,0,0,0,0,0,0,0,0,0,0,7,0,0,0,1,1,0,0,7,0,0,0,0,0,0,0,0,0,0,0,1], // 3
             [1,0,0,5,0,0,0,0,5,0,0,1,1,0,0,0,0,0,0,1,1,0,0,5,0,0,0,0,5,0,0,1], // 4
             [1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,1], // 5
@@ -408,8 +437,8 @@ struct GameWorld {
             [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1], // 26
             [1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,5,1,5,1,1,0,0,0,0,0,0,1,1,1,1,1,1], // 27
             [1,1,1,1,1,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,1,1,1,1,1], // 28
-            [1,0,0,0,1,0,0,0,0,0,5,0,0,4,0,0,0,0,5,0,0,5,0,0,0,0,0,1,0,0,0,1], // 29
-            [1,0,0,0,4,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,4,0,0,0,1], // 30
+            [1,0,0,0,1,0,0,0,0,0,5,0,0,4,0,0,0,0,5,0,0,5,0,0,0,0,0,1,0,0,1,1], // 29
+            [1,0,0,0,4,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,4,0,11,0,1], // 30
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], // 31
         ]
         return LevelData(
@@ -466,8 +495,13 @@ struct GameWorld {
                 (.healthPack(amount: 25), 11.5, 27.5),
                 // Mission item — demonic artifact deep in east wing
                 (.demonicArtifact, 29.5, 12.5),
+                // Secret closets
+                (.ammoShells(amount: 12), 1.5, 1.5),
+                (.armorVest(amount: 50), 30.5, 30.5),
             ],
-            objective: .retrieveArtifact
+            objective: .retrieveArtifact,
+            parTime: 150,
+            secrets: [(1, 1), (30, 30)]
         )
     }
 
@@ -481,12 +515,13 @@ struct GameWorld {
     // Dense enemy encounters. ~25 enemies, high difficulty.
 
     private static func level3Data() -> LevelData {
-        // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal
+        // 0=empty, 1=brick, 2=metal, 3=tech, 4=door, 5=brickTorch, 6=exitPortal,
+        // 7-9=locked doors, 10=nukage, 11/12/13=secret door textured as brick/metal/tech
         let layout: [[Int]] = [
             //0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
             [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3], // 0
-            [3,0,0,0,0,0,3,0,0,0,0,0,0,0,3,3,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,3], // 1
-            [3,0,0,0,0,0,0,0,0,0,3,0,0,0,3,3,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,3], // 2
+            [3,0,0,0,0,0,3,0,0,0,0,0,0,0,3,3,0,0,0,0,0,0,3,0,0,0,0,0,0,13,0,3], // 1
+            [3,0,0,0,0,0,0,0,0,0,3,0,0,0,3,3,0,0,0,0,0,0,0,0,0,0,3,0,0,0,3,3], // 2
             [3,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,3], // 3
             [3,0,0,3,0,0,0,0,3,0,0,0,0,0,3,3,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,3], // 4
             [3,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,0,0,0,0,3,0,0,3,0,0,0,0,0,0,0,3], // 5
@@ -513,8 +548,8 @@ struct GameWorld {
             [3,0,0,0,0,0,0,0,0,3,0,0,0,0,3,0,0,3,0,0,3,3,3,3,3,3,3,0,0,0,0,3], // 26
             [3,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3], // 27
             [3,0,0,0,3,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,3], // 28
-            [3,0,0,0,0,0,0,0,0,3,3,3,0,0,0,3,0,0,3,0,0,0,3,0,0,0,0,0,0,0,6,3], // 29  EXIT at (30,29)
-            [3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10,3], // 30
+            [3,3,0,0,0,0,0,0,0,3,3,3,0,0,0,3,0,0,3,0,0,0,3,0,0,0,0,0,0,0,6,3], // 29  EXIT at (30,29)
+            [3,0,13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10,3], // 30
             [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3], // 31
         ]
         return LevelData(
@@ -589,8 +624,13 @@ struct GameWorld {
                 // Rocket launcher debuts in the final arena
                 (.rocketLauncherPickup, 25.5, 20.5),
                 (.ammoRockets(amount: 5), 27.5, 24.5),
+                // Secret closets
+                (.ammoRockets(amount: 4), 30.5, 1.5),
+                (.healthPack(amount: 50), 1.5, 30.5),
             ],
-            objective: .exterminate(.demon)
+            objective: .exterminate(.demon),
+            parTime: 210,
+            secrets: [(30, 1), (1, 30)]
         )
     }
 
@@ -636,8 +676,8 @@ struct GameWorld {
             [2,0,0,0,0,0,2,2,2,4,2,2,2,2,2,4,2,2,2,2,2,2,2,2,2,4,2,2,2,2,2,2], // 26
             [2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 27
             [2,0,0,0,0,0,4,0,0,0,0,0,2,0,0,0,0,0,0,2,0,0,0,0,0,0,2,0,0,0,0,2], // 28
-            [2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 29
-            [2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // 30
+            [2,2,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // 29
+            [2,0,12,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,12,0,2], // 30
             [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // 31
         ]
         return LevelData(
@@ -730,8 +770,13 @@ struct GameWorld {
                 (.ammoBullets(amount: 30), 30.5, 19.5),
                 (.healthPack(amount: 25), 29.5, 16.5),
                 (.ammoRockets(amount: 5), 28.5, 19.5),
+                // Secret closets
+                (.healthPack(amount: 50), 1.5, 30.5),
+                (.ammoRockets(amount: 4), 30.5, 30.5),
             ],
-            objective: .exterminateAll
+            objective: .exterminateAll,
+            parTime: 240,
+            secrets: [(1, 30), (30, 30)]
         )
     }
 }
