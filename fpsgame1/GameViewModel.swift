@@ -4,7 +4,7 @@
 //
 
 import SwiftUI
-import AppKit
+import QuartzCore
 import Metal
 import MetalKit
 
@@ -12,7 +12,8 @@ import MetalKit
 @MainActor
 final class GameViewModel {
     /// CPU fallback only: the last rendered frame for SwiftUI to display
-    var frameImage: NSImage?
+    /// (a CGImage so the same path serves AppKit and UIKit hosts)
+    var frameImage: CGImage?
     /// True once the Metal renderer is up; the game view then hosts an MTKView
     /// whose display link drives the loop instead of the timer.
     var usesMetalView: Bool = false
@@ -214,6 +215,7 @@ final class GameViewModel {
         inputManager.mouseDeltaY = 0
         inputManager.mouseHeld = false
         inputManager.mouseClicked = false
+        inputManager.clearTouch()
     }
 
     /// After death: reload the current level (not the whole campaign) behind its briefing
@@ -331,7 +333,7 @@ final class GameViewModel {
             )
             engine.player.angle -= angleOffset
             currentEffects().apply(to: cr.pixelBuffer)
-            frameImage = cr.pixelBuffer.toNSImage()
+            frameImage = cr.pixelBuffer.toCGImage()
         }
     }
 
@@ -594,7 +596,14 @@ final class GameViewModel {
             pauseMenuIndex = (pauseMenuIndex + 1) % count
         }
         guard pressed.contains(InputManager.keyReturn) || pressed.contains(InputManager.keySpace) else { return }
-        switch pauseMenuIndex {
+        choosePauseMenuItem(pauseMenuIndex)
+    }
+
+    /// Activate a pause menu row (Enter on the highlighted row, or a tap on it)
+    func choosePauseMenuItem(_ index: Int) {
+        guard gameState == .paused else { return }
+        pauseMenuIndex = index
+        switch index {
         case 0: togglePause()
         case 1: showSettings()
         default: quitToTitle()

@@ -21,6 +21,12 @@ final class AudioManager {
     }
 
     private func setupEngine() {
+        #if os(iOS)
+        // Games play under the ambient category: silenced by the ring/silent switch,
+        // and mixed with whatever the user has playing.
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        #endif
         let engine = AVAudioEngine()
 
         guard let fmt = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1) else { return }

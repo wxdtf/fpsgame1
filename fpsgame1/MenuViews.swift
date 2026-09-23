@@ -4,6 +4,9 @@
 //
 
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct TitleScreenView: View {
     let settings: GameSettings
@@ -56,7 +59,7 @@ struct TitleScreenView: View {
 
                 // Menu options
                 VStack(spacing: 16) {
-                    Text("PRESS ENTER OR CLICK TO START")
+                    Text(InputHints.start)
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
                         .opacity(blinkVisible ? 1.0 : 0.3)
@@ -84,19 +87,29 @@ struct TitleScreenView: View {
                     }
                     .padding(.top, 4)
 
-                    Text("S - SETTINGS")
+                    Text(InputHints.settings)
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundColor(.yellow)
                         .onTapGesture { onSettings() }
 
                     VStack(spacing: 6) {
-                        controlHint("WASD / LEFT STICK", description: "Move")
-                        controlHint("MOUSE / RIGHT STICK", description: "Look around")
-                        controlHint("SPACE / CLICK / RT", description: "Shoot")
-                        controlHint("E / X", description: "Open doors")
-                        controlHint("1 - 5 / LB RB", description: "Switch weapons")
-                        controlHint("SHIFT / L3", description: "Sprint")
-                        controlHint("ESC / MENU", description: "Pause")
+                        if InputHints.isTouch {
+                            controlHint("LEFT SIDE / LEFT STICK", description: "Move")
+                            controlHint("RIGHT SIDE / RIGHT STICK", description: "Look around")
+                            controlHint("FIRE / TAP / RT", description: "Shoot")
+                            controlHint("USE / X", description: "Open doors")
+                            controlHint("\u{25C0} \u{25B6} / LB RB", description: "Switch weapons")
+                            controlHint("RUN / L3", description: "Sprint")
+                            controlHint("II / MENU", description: "Pause")
+                        } else {
+                            controlHint("WASD / LEFT STICK", description: "Move")
+                            controlHint("MOUSE / RIGHT STICK", description: "Look around")
+                            controlHint("SPACE / CLICK / RT", description: "Shoot")
+                            controlHint("E / X", description: "Open doors")
+                            controlHint("1 - 5 / LB RB", description: "Switch weapons")
+                            controlHint("SHIFT / L3", description: "Sprint")
+                            controlHint("ESC / MENU", description: "Pause")
+                        }
                     }
                     .padding(.top, 6)
                 }
@@ -163,7 +176,7 @@ struct DeathScreenView: View {
                     .foregroundColor(.red)
                     .shadow(color: .black, radius: 4, x: 2, y: 2)
 
-                Text("PRESS ENTER TO TRY AGAIN")
+                Text(InputHints.tryAgain)
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.8))
             }
@@ -220,7 +233,7 @@ struct VictoryScreenView: View {
                 }
                 .padding(.vertical, 20)
 
-                Text(isFinalLevel ? "PRESS ENTER TO CONTINUE" : "PRESS ENTER FOR NEXT LEVEL")
+                Text(isFinalLevel ? InputHints.continueHint : InputHints.nextLevel)
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.8))
             }
@@ -330,7 +343,7 @@ struct CampaignCompleteView: View {
                         time: totalTime, parTime: totalPar > 0 ? totalPar : 120 * Double(max(1, results.count))))
                 }
 
-                Text("PRESS ENTER TO RETURN TO THE MENU")
+                Text(InputHints.isTouch ? "TAP TO RETURN TO THE MENU" : "PRESS ENTER TO RETURN TO THE MENU")
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.8))
                     .padding(.top, 10)
@@ -417,7 +430,7 @@ struct BriefingScreenView: View {
                 }
 
                 if showPrompt {
-                    Text("PRESS ENTER TO BEGIN")
+                    Text(InputHints.isTouch ? "TAP TO BEGIN" : "PRESS ENTER TO BEGIN")
                         .font(.system(size: 14, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
                         .padding(.top, 20)
@@ -466,6 +479,9 @@ struct BriefingScreenView: View {
 }
 
 // Helper to capture keys on menu screens: Enter fires onEnter, every other key goes to onKey
+// (mac key codes; an iPad keyboard is translated to the same codes). A game controller
+// feeds the same handlers through ControllerMenuPoller.
+#if os(macOS)
 struct KeyPressHandler: NSViewRepresentable {
     let onEnter: () -> Void
     var onKey: ((UInt16) -> Void)? = nil
@@ -507,6 +523,79 @@ struct KeyPressHandler: NSViewRepresentable {
                 poller.stop()
             }
         }
+    }
+}
+#else
+struct KeyPressHandler: UIViewRepresentable {
+    let onEnter: () -> Void
+    var onKey: ((UInt16) -> Void)? = nil
+
+    func makeUIView(context: Context) -> KeyPressUIView {
+        let view = KeyPressUIView()
+        view.backgroundColor = .clear
+        view.onEnter = onEnter
+        view.onKey = onKey
+        DispatchQueue.main.async {
+            view.becomeFirstResponder()
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: KeyPressUIView, context: Context) {
+        uiView.onEnter = onEnter
+        uiView.onKey = onKey
+    }
+
+    class KeyPressUIView: UIView {
+        var onEnter: (() -> Void)? { didSet { poller.onEnter = onEnter } }
+        var onKey: ((UInt16) -> Void)? { didSet { poller.onKey = onKey } }
+        private let poller = ControllerMenuPoller()
+        override var canBecomeFirstResponder: Bool { true }
+        /// Sits behind the screen's tap targets; never swallows a touch
+        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? { nil }
+        override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            var handled = false
+            for press in presses {
+                guard let key = press.key, let code = InputManager.keyCode(for: key.keyCode) else { continue }
+                handled = true
+                if code == InputManager.keyReturn {
+                    onEnter?()
+                } else {
+                    onKey?(code)
+                }
+            }
+            if !handled { super.pressesBegan(presses, with: event) }
+        }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil {
+                poller.onEnter = onEnter
+                poller.onKey = onKey
+                poller.start()
+                becomeFirstResponder()
+            } else {
+                poller.stop()
+            }
+        }
+    }
+}
+#endif
+
+/// Platform-specific wording for the on-screen hints
+enum InputHints {
+    #if os(iOS)
+    static let isTouch = true
+    #else
+    static let isTouch = false
+    #endif
+    static let start = isTouch ? "TAP TO START" : "PRESS ENTER OR CLICK TO START"
+    static let continueHint = isTouch ? "TAP TO CONTINUE" : "PRESS ENTER TO CONTINUE"
+    static let nextLevel = isTouch ? "TAP FOR NEXT LEVEL" : "PRESS ENTER FOR NEXT LEVEL"
+    static let tryAgain = isTouch ? "TAP TO TRY AGAIN" : "PRESS ENTER TO TRY AGAIN"
+    static let settings = isTouch ? "SETTINGS" : "S - SETTINGS"
+    static let lookSensitivity = isTouch ? "LOOK SENSITIVITY" : "MOUSE SENSITIVITY"
+    static func deploy(_ name: String) -> String {
+        isTouch ? "TAP TO DEPLOY AS \(name)" : "PRESS ENTER TO DEPLOY AS \(name)"
     }
 }
 
@@ -553,14 +642,19 @@ struct CharacterSelectView: View {
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
                         .frame(width: 560)
-                    Text("PRESS ENTER TO DEPLOY AS \(selected.name)")
+                    Text(InputHints.deploy(selected.name))
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
                         .padding(.top, 8)
                         .onTapGesture { onSelect(selected) }
-                    Text("\u{2190} \u{2192}  OR  1 2 3  TO CHOOSE   \u{00B7}   ESC  BACK")
+                    Text(InputHints.isTouch ? "TAP A MARINE TO CHOOSE" : "\u{2190} \u{2192}  OR  1 2 3  TO CHOOSE   \u{00B7}   ESC  BACK")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.gray)
+                    Text("\u{25C0} BACK")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(.yellow)
+                        .padding(.top, 4)
+                        .onTapGesture { onBack() }
                 }
 
                 Spacer()

@@ -31,7 +31,7 @@ struct SettingsView: View {
                     .shadow(color: .red.opacity(0.5), radius: 12)
 
                 VStack(spacing: 10) {
-                    sliderRow(.sensitivity, "MOUSE SENSITIVITY", value: settings.mouseSensitivity / GameSettings.sensitivityRange.upperBound,
+                    sliderRow(.sensitivity, InputHints.lookSensitivity, value: settings.mouseSensitivity / GameSettings.sensitivityRange.upperBound,
                               text: String(format: "%.1fx", settings.mouseSensitivity))
                     sliderRow(.master, "MASTER VOLUME", value: settings.masterVolume, text: percent(settings.masterVolume))
                     sliderRow(.sfx, "EFFECTS VOLUME", value: settings.sfxVolume, text: percent(settings.sfxVolume))
@@ -42,7 +42,9 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 10)
 
-                Text("\u{2191} \u{2193}  SELECT   \u{00B7}   \u{2190} \u{2192}  ADJUST   \u{00B7}   ENTER  CONFIRM   \u{00B7}   ESC  BACK")
+                Text(InputHints.isTouch
+                     ? "TAP A ROW TO SELECT   \u{00B7}   \u{2190} \u{2192}  ADJUST   \u{00B7}   BACK  RETURNS"
+                     : "\u{2191} \u{2193}  SELECT   \u{00B7}   \u{2190} \u{2192}  ADJUST   \u{00B7}   ENTER  CONFIRM   \u{00B7}   ESC  BACK")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.gray)
 
@@ -153,14 +155,17 @@ struct SettingsView: View {
 }
 
 /// The in-game pause menu. Selection lives in the view model because the game view keeps
-/// keyboard focus while paused; the keys are read in GameViewModel.tick.
+/// keyboard focus while paused; the keys are read in GameViewModel.tick. Rows can also be
+/// tapped (the only way on a touch screen).
 struct PauseOverlayView: View {
     static let items = ["RESUME", "SETTINGS", "QUIT TO TITLE"]
     var selectedIndex: Int = 0
+    var onSelect: ((Int) -> Void)? = nil
 
     var body: some View {
         ZStack {
             Color.black.opacity(0.6).ignoresSafeArea()
+                .allowsHitTesting(false)
 
             VStack(spacing: 22) {
                 Text("PAUSED")
@@ -178,14 +183,17 @@ struct PauseOverlayView: View {
                                 .foregroundColor(index == selectedIndex ? .yellow : .white)
                                 .frame(width: 200, alignment: .leading)
                         }
+                        .contentShape(Rectangle())
+                        .onTapGesture { onSelect?(index) }
                     }
                 }
 
-                Text("\u{2191} \u{2193}  SELECT   \u{00B7}   ENTER  CONFIRM   \u{00B7}   ESC  RESUME")
+                Text(InputHints.isTouch
+                     ? "TAP A ROW   \u{00B7}   II  RESUME"
+                     : "\u{2191} \u{2193}  SELECT   \u{00B7}   ENTER  CONFIRM   \u{00B7}   ESC  RESUME")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundColor(.gray)
             }
         }
-        .allowsHitTesting(false)
     }
 }

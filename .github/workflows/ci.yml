@@ -101,3 +101,84 @@ jobs:
             -quiet \
             $NO_SIGNING \
             build
+
+  build-ios:
+    name: Build and test iOS app (Simulator)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select newest Xcode
+        run: |
+          newest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1)
+          if [ -n "$newest" ]; then
+            sudo xcode-select -s "$newest"
+          fi
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphone
+
+      - name: Pick an iPhone simulator
+        # The unit tests need a booted simulator; take the newest available iPhone.
+        # Without an iOS runtime for this Xcode the job still compiles the app.
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          phones = [d for rt, devs in sorted(runtimes.items()) if "iOS" in rt
+                    for d in devs if d.get("isAvailable") and d["name"].startswith("iPhone")]
+          print(phones[-1]["udid"] if phones else "")')
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          if [ -n "$udid" ]; then
+            xcrun simctl list devices | grep "$udid"
+          else
+            echo "::warning::No available iPhone simulator; building without running the tests"
+          fi
+
+      - name: Unit tests (Debug, iOS Simulator)
+        if: steps.sim.outputs.udid != ''
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project fpsgame1.xcodeproj \
+            -scheme fpsgame1 \
+            -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build/DerivedData-ios \
+            -resultBundlePath build/TestResults-ios.xcresult \
+            -quiet \
+            $NO_SIGNING \
+            test
+
+      - name: Test summary
+        if: steps.sim.outputs.udid != ''
+        run: |
+          xcrun xcresulttool get test-results summary \
+            --path build/TestResults-ios.xcresult > build/test-summary-ios.json
+          python3 - <<'EOF'
+          import json, sys
+          s = json.load(open("build/test-summary-ios.json"))
+          total, passed, failed, skipped = (s.get(k, 0) for k in
+              ("totalTestCount", "passedTests", "failedTests", "skippedTests"))
+          print(f"Tests: {total} total, {passed} passed, {failed} failed, {skipped} skipped")
+          for t in s.get("testFailures", []):
+              print(f"  FAILED {t.get('testName')}: {t.get('failureText')}")
+          if total == 0:
+              sys.exit("No tests were executed; check the fpsgame1Tests target and scheme")
+          if failed:
+              sys.exit(1)
+          EOF
+
+      - name: Build (Release, iOS Simulator, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project fpsgame1.xcodeproj \
+            -scheme fpsgame1 \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData-ios \
+            -quiet \
+            $NO_SIGNING \
+            build

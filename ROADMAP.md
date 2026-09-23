@@ -13,9 +13,10 @@ place to look before starting new work; update it when a milestone lands.
 | World | 32×32 tile maps, 11 tile types, regular + colour-locked doors with auto-close, damage floors (nukage), exit portal, per-level difficulty scaling. |
 | Campaign | 4 levels with briefings, data-driven mission objectives (item retrieval / extermination), level summary with rating, campaign summary, death restarts the current level. |
 | UI / feedback | Title with skill select, settings menu, briefing (typewriter), pause menu, death, level and campaign summary screens (with per-level records, secrets and items tallies). HUD with 42-frame DOOM face, fog-of-war minimap (TAB), objective tracker, status messages, directional damage flash, hit marker, blood spurts on hits, screen shake, muzzle flash, death camera. |
+| Platforms | macOS (keyboard, mouse, controller) and iOS / iPadOS (touch controls, controller, hardware keyboard) from one target; landscape only on iOS. |
 | Audio | Fully procedural: 14 sound effects and one looping BGM track per level (4 tracks), generated at runtime with AVAudioEngine. |
 | Assets | None on disk. Wall/floor textures, face frames, projectiles, explosions and sounds are generated procedurally in Swift; the exit portal is procedural too, designed in `tools/sprite_art/portal.py` and ported line for line. The four enemy sheets, the five first-person weapons (240×150) and the 14 pickups (32×32) are pixel art authored in `tools/sprite_art/*.py` on a turntable rig (a 3D part layout projected to the front, 3/4, side, back-3/4 and back views, with automatic cel shading, contact shadows and outlines; 41 frames each at 64×96 / 96×96 / 96×120, with a six-frame death sequence choreographed per enemy) and baked into `BakedSpriteData.swift` as run-length strings by `tools/sprite_art/build.py`. Enemies show the rotation that matches their facing relative to the player, mirrored for the other side. |
-| Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). GitHub Actions builds the app on a macOS runner and runs the validator on every push and PR. `tools/verify_local.sh` syncs a Mac clone to `main`, validates, builds with the newest Xcode and launches the app for a play-test. `fpsgame1Tests` (XCTest, hosted by the app) covers the Foundation-only engine: world/door solidity, navigation field, player movement and camera, weapons, enemy state machine, level flow and shipped level data. CI runs the tests in Debug and then builds Release. |
+| Tooling | `tools/validate_levels.py` statically checks every level (reachability, key gating, entity placement). GitHub Actions builds the app on a macOS runner, builds and tests it for the iOS Simulator, and runs the validator on every push and PR. `tools/verify_local.sh` syncs a Mac clone to `main`, validates, builds with the newest Xcode and launches the app for a play-test. `fpsgame1Tests` (XCTest, hosted by the app) covers the Foundation-only engine: world/door solidity, navigation field, player movement and camera, weapons, enemy state machine, level flow and shipped level data. CI runs the tests in Debug and then builds Release. |
 
 ## Milestone 1 — Correctness & campaign completeness (done on this branch)
 
@@ -106,7 +107,17 @@ Found by reviewing the code and by running the new level validator:
 - [x] Present through an `MTKView` instead of reading the GPU frame back into an `NSImage`,
       and composite sprites, the weapon overlay and the screen effects on the GPU
       (`spriteKernel`, `postKernel`); the unused Metal 4 scaffolding was removed.
-- [ ] Explore an iOS/iPadOS target (touch input, `UIImage` frame path).
+- [x] iOS / iPadOS: the one app target builds for macOS, iOS and iPadOS (`SDKROOT = auto`,
+      landscape only, iOS 18+). `GameView` and `KeyPressHandler` have UIKit twins (the
+      MTKView host, a hardware-keyboard reader that maps HID usages to the mac key codes),
+      the CPU fallback hands SwiftUI a `CGImage` on both platforms, and
+      `TouchControls.swift` lays on-screen controls over the game: a floating stick on the
+      left, drag-to-look and tap-to-fire on the right, FIRE / USE / RUN / weapon ◀ ▶ /
+      MAP / PAUSE buttons that feed `InputManager` next to the keyboard, mouse and
+      controller. Menus are tappable and word their hints for touch. CI builds the app
+      for the iOS Simulator and runs the unit tests on it (`build-ios` job).
+- [ ] iOS follow-ups: scale the HUD and menus for phone-sized screens, a device
+      play-test (the container has no simulator), and a launch icon.
 
 ## How to work on sprite art
 

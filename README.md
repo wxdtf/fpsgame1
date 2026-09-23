@@ -1,9 +1,9 @@
 # DOOM Swift
 
-A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Metal** on macOS.
+A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Metal** for macOS, with the same code running on iOS / iPadOS (on-screen controls, controllers and hardware keyboards).
 
 [![CI](https://github.com/wxdtf/fpsgame1/actions/workflows/ci.yml/badge.svg)](https://github.com/wxdtf/fpsgame1/actions/workflows/ci.yml)
-![macOS](https://img.shields.io/badge/platform-macOS-blue)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20iOS%20%7C%20iPadOS-blue)
 ![Swift](https://img.shields.io/badge/Swift-6.0-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -24,16 +24,16 @@ A retro DOOM-style first-person shooter built entirely with **SwiftUI** and **Me
 
 ## Controls
 
-| Keyboard / mouse | Controller | Action |
-|-----|-----|--------|
-| `W A S D` | Left stick | Move |
-| `Mouse / Trackpad` | Right stick | Look around |
-| `Space / Click` | `RT` / `A` | Shoot |
-| `E` | `X` / `B` | Open doors |
-| `1 2 3 4 5` | `LB` / `RB` | Switch weapons |
-| `Shift` | `L3` / `LT` | Sprint |
-| `Tab` | Options | Toggle minimap |
-| `ESC` | Menu | Pause menu (resume, settings, quit to title) |
+| Keyboard / mouse | Controller | Touch (iOS / iPadOS) | Action |
+|-----|-----|-----|--------|
+| `W A S D` | Left stick | Drag on the left half (floating stick) | Move |
+| `Mouse / Trackpad` | Right stick | Drag on the right half | Look around |
+| `Space / Click` | `RT` / `A` | `FIRE` (hold) or tap the right half | Shoot |
+| `E` | `X` / `B` | `USE` | Open doors |
+| `1 2 3 4 5` | `LB` / `RB` | `◀` `▶` | Switch weapons |
+| `Shift` | `L3` / `LT` | `RUN` (toggle) | Sprint |
+| `Tab` | Options | `MAP` | Toggle minimap |
+| `ESC` | Menu | `II` | Pause menu (resume, settings, quit to title) |
 
 On the title screen `← →` pick the skill level (four DOOM difficulties, remembered between
 launches) and `S` opens the settings: mouse sensitivity, master / effects / music volume and
@@ -43,8 +43,8 @@ and kill percentage for that level and skill.
 
 ## Requirements
 
-- macOS 15.7+ (the project's deployment target)
-- Xcode 16.0+
+- macOS 15.7+ or iOS / iPadOS 18+ (the project's deployment targets)
+- Xcode 26 (the project uses synchronized groups)
 
 ## Getting Started
 
@@ -53,13 +53,18 @@ and kill percentage for that level and skill.
    git clone https://github.com/wxdtf/fpsgame1.git
    ```
 2. Open `fpsgame1.xcodeproj` in Xcode
-3. Build and Run (`⌘R`), or run the unit tests (`⌘U`)
+3. Pick **My Mac** or an iPhone / iPad (simulator or device) as the run destination
+4. Build and Run (`⌘R`), or run the unit tests (`⌘U`)
+
+The one `fpsgame1` target builds for macOS, iOS and iPadOS; iOS runs landscape only. On a
+touch screen the game shows on-screen controls (see the table above); a paired controller
+or a hardware keyboard works exactly like on the Mac.
 
 ## Tech Stack
 
 - **SwiftUI** — UI framework and game state management
 - **Metal** — GPU-accelerated raycasting shader
-- **AppKit** — Low-level input capture for keyboard and mouse
+- **AppKit / UIKit** — Low-level input capture: keyboard and mouse on the Mac, hardware keyboards on iPad; touch controls are SwiftUI
 
 ## Architecture
 
@@ -88,12 +93,13 @@ fpsgame1/
 ├── AudioManager.swift     # Sound effects system
 ├── Settings.swift         # Difficulty, options menu persistence, per-level records
 ├── SettingsViews.swift    # Settings screen and pause menu
-├── InputManager.swift     # Keyboard, mouse and game controller input
+├── InputManager.swift     # Keyboard, mouse, game controller and touch input
+├── TouchControls.swift    # On-screen controls for iOS / iPadOS
 ├── MenuViews.swift        # Title (skill select), death, victory, briefing screens
 ├── Item.swift             # Pickup item definitions
 ├── PixelBuffer.swift      # Pixel buffer for software rendering
 ├── Constants.swift        # Game configuration values
-└── GameView.swift         # Game rendering view
+└── GameView.swift         # Game rendering view (AppKit and UIKit hosts)
 tools/
 ├── validate_levels.py     # Static checker for level data (reachability, keys, placement)
 └── verify_local.sh        # Post-merge verification on a Mac: sync, validate, build, launch
