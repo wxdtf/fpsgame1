@@ -94,7 +94,11 @@ Found by reviewing the code and by running the new level validator:
 - [x] Unit-test target (`fpsgame1Tests`, shared scheme `fpsgame1`) covering `GameEngine`,
       `GameWorld`, `Enemy`, `Navigation`, `Player`, `Weapon` and the shipped level data.
       Run with `xcodebuild test -scheme fpsgame1 -destination 'platform=macOS'` or ⌘U.
-- [ ] Move the validator's reachability / key-gating checks into the test target.
+- [x] The validator's playability checks also run in the test target
+      (`LevelValidationTests`: enclosed border, key-gated reachability of the exit,
+      objective and every entity, every colour gates the exit, no sealed-off floor, doors
+      set into walls, secret doors match their wall, nukage never the only route). The
+      Python script stays for the quick Ubuntu job and its ASCII maps.
 - [x] GitHub Actions workflow: level validator, unit tests (Debug) and a Release build on a
       macOS runner (`.github/workflows/ci.yml`).
 - [x] Local post-merge verification (`tools/verify_local.sh`): sync to `origin/main` with
