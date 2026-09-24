@@ -2,50 +2,65 @@
 //  GameView.swift
 //  testproject
 //
+//  The platform views under the game screen: the MTKView the Metal renderer
+//  presents into, and a transparent input view that feeds InputManager.
+//  AppKit and UIKit variants share the same names so ContentView is identical
+//  on the Mac and on iOS / iPadOS.
+//
 
 import SwiftUI
-import AppKit
 import MetalKit
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
-/// Hosts the MTKView the Metal renderer presents into. The view's display link
-/// drives the game loop: every vsync it asks the view model to step the
-/// simulation and encode a frame.
+/// Drives the game loop from the MTKView's display link: every vsync it asks the
+/// view model to step the simulation and encode a frame.
+final class MetalViewCoordinator: NSObject, MTKViewDelegate {
+    private let viewModel: GameViewModel
+
+    init(viewModel: GameViewModel) {
+        self.viewModel = viewModel
+    }
+
+    nonisolated func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+
+    nonisolated func draw(in view: MTKView) {
+        // MTKView calls this on the main thread
+        MainActor.assumeIsolated {
+            viewModel.renderMetalFrame(in: view)
+        }
+    }
+}
+
+private func makeMetalView(viewModel: GameViewModel, coordinator: MetalViewCoordinator) -> MTKView {
+    let view = MTKView(frame: .zero, device: viewModel.metalDevice)
+    view.colorPixelFormat = .bgra8Unorm
+    view.framebufferOnly = false        // the post kernel writes the drawable directly
+    view.preferredFramesPerSecond = 60
+    view.isPaused = false
+    view.enableSetNeedsDisplay = false
+    view.delegate = coordinator
+    return view
+}
+
+#if os(macOS)
+
+/// Hosts the MTKView the Metal renderer presents into.
 struct MetalGameView: NSViewRepresentable {
     let viewModel: GameViewModel
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(viewModel: viewModel)
+    func makeCoordinator() -> MetalViewCoordinator {
+        MetalViewCoordinator(viewModel: viewModel)
     }
 
     func makeNSView(context: Context) -> MTKView {
-        let view = MTKView(frame: .zero, device: viewModel.metalDevice)
-        view.colorPixelFormat = .bgra8Unorm
-        view.framebufferOnly = false        // the post kernel writes the drawable directly
-        view.preferredFramesPerSecond = 60
-        view.isPaused = false
-        view.enableSetNeedsDisplay = false
-        view.delegate = context.coordinator
-        return view
+        makeMetalView(viewModel: viewModel, coordinator: context.coordinator)
     }
 
     func updateNSView(_ nsView: MTKView, context: Context) {}
-
-    final class Coordinator: NSObject, MTKViewDelegate {
-        private let viewModel: GameViewModel
-
-        init(viewModel: GameViewModel) {
-            self.viewModel = viewModel
-        }
-
-        nonisolated func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
-
-        nonisolated func draw(in view: MTKView) {
-            // MTKView calls this on the main thread
-            MainActor.assumeIsolated {
-                viewModel.renderMetalFrame(in: view)
-            }
-        }
-    }
 }
 
 class GameNSView: NSView {
@@ -196,3 +211,90 @@ struct GameInputView: NSViewRepresentable {
         // Don't do this on every update to avoid disrupting event delivery
     }
 }
+
+#else
+
+/// Hosts the MTKView the Metal renderer presents into.
+struct MetalGameView: UIViewRepresentable {
+    let viewModel: GameViewModel
+
+    func makeCoordinator() -> MetalViewCoordinator {
+        MetalViewCoordinator(viewModel: viewModel)
+    }
+
+    func makeUIView(context: Context) -> MTKView {
+        makeMetalView(viewModel: viewModel, coordinator: context.coordinator)
+    }
+
+    func updateUIView(_ uiView: MTKView, context: Context) {}
+}
+
+/// Reads a hardware keyboard (iPad keyboards, Bluetooth keyboards) into the same
+/// key codes the Mac view produces. Touches fall straight through to the
+/// on-screen controls below it.
+class GameUIView: UIView {
+    var inputManager: InputManager?
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil {
+            becomeFirstResponder()
+        }
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        nil
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        var handled = false
+        for press in presses {
+            if let key = press.key, let code = InputManager.keyCode(for: key.keyCode) {
+                inputManager?.keyDown(code)
+                handled = true
+            }
+        }
+        if !handled { super.pressesBegan(presses, with: event) }
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        release(presses, with: event)
+    }
+
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        release(presses, with: event)
+    }
+
+    private func release(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        var handled = false
+        for press in presses {
+            if let key = press.key, let code = InputManager.keyCode(for: key.keyCode) {
+                inputManager?.keyUp(code)
+                handled = true
+            }
+        }
+        if !handled { super.pressesEnded(presses, with: event) }
+    }
+}
+
+struct GameInputView: UIViewRepresentable {
+    let inputManager: InputManager
+
+    func makeUIView(context: Context) -> GameUIView {
+        let view = GameUIView()
+        view.backgroundColor = .clear
+        view.inputManager = inputManager
+        DispatchQueue.main.async {
+            view.becomeFirstResponder()
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: GameUIView, context: Context) {
+        uiView.inputManager = inputManager
+    }
+}
+
+#endif

@@ -43,7 +43,8 @@ struct ContentView: View {
 
             case .paused:
                 gamePlayView
-                PauseOverlayView(selectedIndex: viewModel.pauseMenuIndex)
+                PauseOverlayView(selectedIndex: viewModel.pauseMenuIndex,
+                                 onSelect: { viewModel.choosePauseMenuItem($0) })
 
             case .dead:
                 DeathScreenView(onRestart: {
@@ -74,7 +75,9 @@ struct ContentView: View {
                 )
             }
         }
+        #if os(macOS)
         .frame(minWidth: 800, minHeight: 500)
+        #endif
         .onDisappear {
             viewModel.stopGame()
         }
@@ -87,7 +90,7 @@ struct ContentView: View {
             if viewModel.usesMetalView {
                 MetalGameView(viewModel: viewModel)
             } else if let image = viewModel.frameImage {
-                Image(nsImage: image)
+                Image(decorative: image, scale: 1)
                     .interpolation(.none)
                     .resizable()
                     .aspectRatio(
@@ -99,9 +102,14 @@ struct ContentView: View {
             // HUD overlay
             HUDView(viewModel: viewModel)
 
-            // Input capture (transparent overlay)
+            // Input capture (transparent overlay): keyboard and mouse on the Mac, a
+            // hardware keyboard on iPad; touches pass through it to the controls below
             GameInputView(inputManager: viewModel.inputManager)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            #if os(iOS)
+            TouchControlsView(inputManager: viewModel.inputManager)
+            #endif
         }
     }
 }

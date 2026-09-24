@@ -3,7 +3,7 @@
 //  testproject
 //
 
-import AppKit
+import Foundation
 import CoreGraphics
 import Accelerate
 
@@ -265,8 +265,4 @@ final class PixelBuffer {
         }
     }
 
-    func toNSImage() -> NSImage? {
-        guard let cgImage = toCGImage() else { return nil }
-        return NSImage(cgImage: cgImage, size: NSSize(width: width, height: height))
-    }
 }

@@ -13,7 +13,9 @@ struct fpsgame1App: App {
         WindowGroup {
             ContentView()
         }
+        #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 960, height: 600)
+        #endif
     }
 }
