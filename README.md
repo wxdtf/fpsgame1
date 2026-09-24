@@ -58,7 +58,8 @@ and kill percentage for that level and skill.
 
 The one `fpsgame1` target builds for macOS, iOS and iPadOS; iOS runs landscape only. On a
 touch screen the game shows on-screen controls (see the table above); a paired controller
-or a hardware keyboard works exactly like on the Mac.
+or a hardware keyboard works exactly like on the Mac. Screens are laid out for a 960×600
+window and scale down to fit smaller displays such as an iPhone.
 
 ## Tech Stack
 
@@ -95,6 +96,7 @@ fpsgame1/
 ├── SettingsViews.swift    # Settings screen and pause menu
 ├── InputManager.swift     # Keyboard, mouse, game controller and touch input
 ├── TouchControls.swift    # On-screen controls for iOS / iPadOS
+├── DesignScale.swift      # Shrinks the 960×600 layouts to fit smaller screens
 ├── MenuViews.swift        # Title (skill select), death, victory, briefing screens
 ├── Item.swift             # Pickup item definitions
 ├── PixelBuffer.swift      # Pixel buffer for software rendering
@@ -102,6 +104,7 @@ fpsgame1/
 └── GameView.swift         # Game rendering view (AppKit and UIKit hosts)
 tools/
 ├── validate_levels.py     # Static checker for level data (reachability, keys, placement)
+├── sprite_art/            # Pixel-art sources for enemies, weapons, items, effects and the app icon
 └── verify_local.sh        # Post-merge verification on a Mac: sync, validate, build, launch
 ```
 
