@@ -339,6 +339,9 @@ final class GameEngine {
                 }
             }
 
+            // Settle the rotation this frame draws (with hysteresis against flicker)
+            enemies[i].updateSpriteView(viewerX: player.x, viewerY: player.y)
+
             // Check if enemy is attacking and should deal damage
             if case .attacking = enemies[i].state {
                 // Deal damage once per attack, partway through the animation
