@@ -189,6 +189,9 @@ struct Enemy: Identifiable {
     /// Stuck counter — increments when enemy can't move, triggers wall-avoidance steering
     var stuckTimer: Double = 0
     var wallAvoidAngle: Double = 0
+    /// The rotation drawn last frame, kept until the facing moves clearly into another
+    /// sector (see `updateSpriteView`), so a facing on a sector boundary does not flicker
+    var displayedView: SpriteView? = nil
 
     init(type: EnemyType, x: Double, y: Double) {
         self.type = type
@@ -254,22 +257,53 @@ struct Enemy: Identifiable {
     static let deathFrameCount = 6
     static let frontFrameCount = rotatedFrameCount + deathFrameCount
 
-    func spriteView(viewerX: Double, viewerY: Double) -> SpriteView {
+    /// Each rotation covers 45° of facing; a sector already on screen keeps showing until
+    /// the facing is this far past its edge, so an enemy walking along a boundary (or the
+    /// player strafing around one) does not flip between two views every frame.
+    static let rotationHysteresis: Double = 6 * .pi / 180
+    static let rotationSectorWidth: Double = .pi / 4
+
+    /// The facing relative to the viewer, normalised to (-π, π]: 0 looks straight at them
+    private func relativeFacing(viewerX: Double, viewerY: Double) -> Double {
         let toViewer = atan2(viewerY - y, viewerX - x)
-        var rel = angle - toViewer
-        // normalise to (-π, π]
-        rel = rel - (2 * .pi) * floor((rel + .pi) / (2 * .pi))
-        let sector = min(4, Int((abs(rel) / (.pi / 4)).rounded()))
+        let rel = angle - toViewer
+        return rel - (2 * .pi) * floor((rel + .pi) / (2 * .pi))
+    }
+
+    /// The rotation nearest the facing, with no memory of what was shown before
+    func spriteView(viewerX: Double, viewerY: Double) -> SpriteView {
+        spriteView(viewerX: viewerX, viewerY: viewerY, previous: nil)
+    }
+
+    /// The rotation to show given what was shown last frame: the previous sector stays
+    /// while the facing is within its span plus `rotationHysteresis` on either side.
+    func spriteView(viewerX: Double, viewerY: Double, previous: SpriteView?) -> SpriteView {
+        let rel = relativeFacing(viewerX: viewerX, viewerY: viewerY)
+        let magnitude = abs(rel)
+        var sector = min(4, Int((magnitude / Self.rotationSectorWidth).rounded()))
+        if let previous, previous.rotation != sector {
+            let centre = Double(previous.rotation) * Self.rotationSectorWidth
+            if abs(magnitude - centre) <= Self.rotationSectorWidth / 2 + Self.rotationHysteresis {
+                sector = previous.rotation
+            }
+        }
         let mirrored = rel < 0 && sector != 0 && sector != 4
         return SpriteView(rotation: sector, mirrored: mirrored)
     }
 
+    /// Once per frame from the engine: settle which rotation this frame draws
+    mutating func updateSpriteView(viewerX: Double, viewerY: Double) {
+        displayedView = spriteView(viewerX: viewerX, viewerY: viewerY, previous: displayedView)
+    }
+
     /// Frame index into the baked sheet for a viewer at (viewerX, viewerY), and whether
-    /// the frame should be drawn mirrored. Death frames are front-only.
+    /// the frame should be drawn mirrored. Uses the rotation settled by
+    /// `updateSpriteView` when there is one (so the renderers share the engine's choice),
+    /// otherwise the nearest rotation. Death frames are front-only.
     func spriteFrame(viewerX: Double, viewerY: Double) -> (index: Int, mirrored: Bool) {
         let base = spriteFrameOffset
         guard base < Self.rotatedFrameCount else { return (base, false) }
-        let view = spriteView(viewerX: viewerX, viewerY: viewerY)
+        let view = displayedView ?? spriteView(viewerX: viewerX, viewerY: viewerY)
         guard view.rotation > 0 else { return (base, false) }
         return (Self.frontFrameCount + (view.rotation - 1) * Self.rotatedFrameCount + base, view.mirrored)
     }

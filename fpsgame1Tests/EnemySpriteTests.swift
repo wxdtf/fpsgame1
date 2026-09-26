@@ -93,6 +93,61 @@ final class EnemySpriteTests: XCTestCase {
         XCTAssertEqual(enemy.spriteView(viewerX: 10, viewerY: 0).rotation, 4)
     }
 
+    // MARK: - Rotation hysteresis
+
+    /// Viewer on the +x axis, so the relative facing is the enemy's angle itself
+    private func viewFacing(_ degrees: Double, previous: Enemy.SpriteView?) -> Enemy.SpriteView {
+        var enemy = Enemy(type: .imp, x: 0, y: 0)
+        enemy.angle = degrees * .pi / 180
+        return enemy.spriteView(viewerX: 10, viewerY: 0, previous: previous)
+    }
+
+    func testASectorOnScreenSurvivesSmallCrossingsOfItsEdge() {
+        // 22.5° is the front / front-quarter boundary
+        let front = Enemy.SpriteView(rotation: 0, mirrored: false)
+        XCTAssertEqual(viewFacing(20, previous: nil).rotation, 0)
+        XCTAssertEqual(viewFacing(25, previous: front).rotation, 0, "3° past the edge keeps the front")
+        XCTAssertEqual(viewFacing(28, previous: front).rotation, 0, "5.5° past the edge still keeps it")
+        XCTAssertEqual(viewFacing(30, previous: front).rotation, 1, "7.5° past the edge switches")
+        // and the same the other way, from the quarter view back to the front
+        let quarter = Enemy.SpriteView(rotation: 1, mirrored: false)
+        XCTAssertEqual(viewFacing(20, previous: quarter).rotation, 1)
+        XCTAssertEqual(viewFacing(15, previous: quarter).rotation, 0)
+    }
+
+    func testWithoutAPreviousViewTheNearestSectorWins() {
+        XCTAssertEqual(viewFacing(25, previous: nil).rotation, 1)
+        XCTAssertEqual(viewFacing(-25, previous: nil), Enemy.SpriteView(rotation: 1, mirrored: true))
+    }
+
+    func testHysteresisHoldsTheBackViewAcrossTheSeam() {
+        let back = Enemy.SpriteView(rotation: 4, mirrored: false)
+        XCTAssertEqual(viewFacing(-155, previous: back).rotation, 4, "just past 157.5° on the far side")
+        XCTAssertEqual(viewFacing(-145, previous: back), Enemy.SpriteView(rotation: 3, mirrored: true))
+    }
+
+    func testAFarAwaySectorIsNeverHeld() {
+        let front = Enemy.SpriteView(rotation: 0, mirrored: false)
+        XCTAssertEqual(viewFacing(90, previous: front).rotation, 2)
+    }
+
+    func testUpdateSpriteViewIsWhatTheFrameUses() {
+        var enemy = Enemy(type: .soldier, x: 0, y: 0)
+        enemy.angle = 20 * .pi / 180
+        enemy.updateSpriteView(viewerX: 10, viewerY: 0)
+        XCTAssertEqual(enemy.displayedView?.rotation, 0)
+        // drift 5° over the edge: the frame keeps the front view
+        enemy.angle = 27 * .pi / 180
+        enemy.updateSpriteView(viewerX: 10, viewerY: 0)
+        XCTAssertEqual(enemy.displayedView?.rotation, 0)
+        XCTAssertEqual(enemy.spriteFrame(viewerX: 10, viewerY: 0).index, 0)
+        // a clear turn switches and the frame follows
+        enemy.angle = 40 * .pi / 180
+        enemy.updateSpriteView(viewerX: 10, viewerY: 0)
+        XCTAssertEqual(enemy.displayedView?.rotation, 1)
+        XCTAssertEqual(enemy.spriteFrame(viewerX: 10, viewerY: 0).index, Enemy.frontFrameCount)
+    }
+
     func testDeathFramesIgnoreRotation() {
         var enemy = Enemy(type: .baron, x: 5, y: 5)
         enemy.angle = 0
