@@ -373,16 +373,6 @@ struct CampaignCompleteView: View {
     }
 }
 
-/// DOOM-flavoured performance rating shared by the level and campaign summaries
-func performanceRating(kills: Int, totalEnemies: Int, time: Double, parTime: Double) -> String {
-    let killPct = totalEnemies > 0 ? Double(kills) / Double(totalEnemies) : 0
-    if killPct >= 1.0 && time < parTime { return "ULTRA-VIOLENCE" }
-    if killPct >= 1.0 { return "NIGHTMARE" }
-    if killPct >= 0.8 { return "HURT ME PLENTY" }
-    if killPct >= 0.5 { return "HEY, NOT TOO ROUGH" }
-    return "I'M TOO YOUNG TO DIE"
-}
-
 func formatClockTime(_ time: Double) -> String {
     let minutes = Int(time) / 60
     let seconds = Int(time) % 60
