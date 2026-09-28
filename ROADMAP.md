@@ -54,8 +54,6 @@ Found by reviewing the code and by running the new level validator:
 
 ## Known issues & open questions
 
-- Level ratings: "NIGHTMARE" is awarded for 100% kills slower than 2 minutes and
-  "ULTRA-VIOLENCE" for faster. Intentional?
 - README requirements said macOS 14 but the project's deployment target is macOS 15.7.
 
 ## Milestone 2 — Content
@@ -76,6 +74,9 @@ Found by reviewing the code and by running the new level validator:
       two per level with a reward behind each, "A SECRET IS REVEALED!" with a chime, and a
       SECRETS x/y and ITEMS % tally on the level and campaign summaries.
 - [x] Per-level par times (`LevelData.parTime`) used by the rating and shown next to the time.
+- [x] Ratings follow DOOM's skill order (`PerformanceRating`): a full clear under par is
+      NIGHTMARE!, over par ULTRA-VIOLENCE, then HURT ME PLENTY / HEY, NOT TOO ROUGH / I'M TOO
+      YOUNG TO DIE by kill percentage.
 
 ## Milestone 3 — Meta & UX
 
