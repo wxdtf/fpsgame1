@@ -48,7 +48,7 @@ final class LineOfSightTests: XCTestCase {
         XCTAssertFalse(nukage.blocksSight(fromX: 1.5, fromY: 1.5, toX: 5.5, toY: 1.5))
     }
 
-    func testAClosedDoorBlocksAndAnOpenDoorDoesNot() {
+    func testAClosedDoorBlocksAndAnOpenDoorDoesNot() throws {
         var world = TestWorld.make([
             "#######",
             "#..+..#",
@@ -92,7 +92,7 @@ final class LineOfSightTests: XCTestCase {
         XCTAssertTrue(isChasing(enemy))
     }
 
-    func testAnEnemyWakesThroughAnOpenDoorButNotAClosedOne() {
+    func testAnEnemyWakesThroughAnOpenDoorButNotAClosedOne() throws {
         var world = TestWorld.make([
             "#######",
             "#..+..#",
