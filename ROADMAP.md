@@ -143,11 +143,17 @@ owner's iPhone 17 Pro). macOS keyboard, mouse and controller input are unchanged
 - A narrow touch-only aim assist pulls the crosshair onto an enemy you are already
   almost aiming at, never through a wall, and it lets go when you flick away.
   Mouse and controller aim are not assisted.
-- Buttons are thumb-sized and inset past the Dynamic Island and the home indicator,
-  and they sit above the status bar. The home-indicator swipe is deferred so FIRE
-  does not leave the app. The picture is drawn edge to edge.
-- HUD type, the face and the minimap are larger on iOS so they stay readable once
-  the 960×600 layout is shrunk onto a 6.3-inch screen. The Mac HUD is unchanged.
+- The picture fills the phone. A landscape screen wider than the Mac's 16:10
+  window is drawn wider, so you see more to the sides instead of black bars.
+  The Mac window stays 16:10.
+- FIRE is a large red button where the right thumb rests. USE, the weapon
+  arrows and RUN sit on an arc next to it. A move stick is visible in the lower
+  left before you touch it. MAP and pause sit in the top corner, clear of the
+  Dynamic Island. The health bar is a short strip along the bottom with larger
+  numbers. The home-indicator swipe is deferred so FIRE does not leave the app.
+- On the phone the status bar is a short translucent strip (ammo, health, face,
+  armor, weapon) in real screen points, so it no longer scales down with the old
+  16:10 frame. The Mac HUD is unchanged.
 - The Metal view asks for 120 frames per second (the system clamps this on a 60 Hz
   display) and drops to 60 if the device gets thermally hot. iPhone is allowed past
   60 via `CADisableMinimumFrameDurationOnPhone`.

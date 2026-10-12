@@ -13,6 +13,154 @@ struct HUDView: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        phoneHUD
+        #else
+        macHUD
+        #endif
+    }
+
+    #if os(iOS)
+    /// Slim bar in real screen points over a full-bleed picture. The Mac keeps
+    /// the taller status bar inside the 960×600 frame.
+    @State private var windowSafe = ScreenInsets()
+
+    private var phoneHUD: some View {
+        GeometryReader { geo in
+            let hud = PhoneLayout.hudHeight(forHeight: geo.size.height)
+            let bottom = max(geo.safeAreaInsets.bottom, windowSafe.bottom)
+            let leading = max(geo.safeAreaInsets.leading, windowSafe.leading)
+            let trailing = max(geo.safeAreaInsets.trailing, windowSafe.trailing)
+            let topInset = max(geo.safeAreaInsets.top, windowSafe.top)
+            ZStack(alignment: .top) {
+                // Dead center of the picture, which is where the shot goes.
+                crosshair
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                VStack(spacing: 6) {
+                    if viewModel.levelNameOpacity > 0 {
+                        Text(viewModel.levelName)
+                            .font(.system(size: 20, weight: .black, design: .monospaced))
+                            .foregroundColor(.green)
+                            .shadow(color: .black, radius: 3, x: 0, y: 1)
+                            .opacity(viewModel.levelNameOpacity)
+                    }
+                    if !viewModel.objectiveText.isEmpty {
+                        HStack(spacing: 6) {
+                            Text(viewModel.objectiveComplete ? "✓" : "◆")
+                            Text(viewModel.objectiveText)
+                        }
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundColor(viewModel.objectiveComplete ? .green : .yellow)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.55))
+                        .clipShape(Capsule())
+                    }
+                    if viewModel.bossActive {
+                        VStack(spacing: 3) {
+                            Text(viewModel.bossName)
+                                .font(.system(size: 13, weight: .black, design: .monospaced))
+                                .foregroundColor(.red)
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.black.opacity(0.65)).frame(width: 200, height: 8)
+                                Capsule().fill(Color.red).frame(width: max(0, 200 * viewModel.bossHealthFraction), height: 8)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, max(10, topInset + 8))
+                .padding(.horizontal, 120)
+
+                if viewModel.showMinimap, let world = viewModel.currentWorld {
+                    MinimapView(
+                        playerX: viewModel.playerX,
+                        playerY: viewModel.playerY,
+                        playerAngle: viewModel.playerAngle,
+                        world: world,
+                        exploredTiles: viewModel.exploredTiles,
+                        worldWidth: viewModel.worldWidth,
+                        enemyPositions: viewModel.enemyPositions,
+                        itemPositions: viewModel.itemPositions
+                    )
+                    .frame(width: 108, height: 108)
+                    .padding(.top, max(8, topInset + 6))
+                    .padding(.leading, leading + 10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+
+                if !viewModel.statusMessage.isEmpty {
+                    Text(viewModel.statusMessage)
+                        .font(.system(size: 16, weight: .black, design: .monospaced))
+                        .foregroundColor(.red)
+                        .shadow(color: .black, radius: 2)
+                        .padding(.bottom, hud + bottom + 16)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                }
+
+                phoneStatusBar(height: hud)
+                    .padding(.leading, leading)
+                    .padding(.trailing, trailing)
+                    .padding(.bottom, bottom)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
+        }
+        .background(WindowSafeAreaReader { next in
+            if next != windowSafe { windowSafe = next }
+        })
+    }
+
+    private func phoneStatusBar(height: CGFloat) -> some View {
+        HStack(spacing: 14) {
+            phoneStat("AMMO", viewModel.ammo < 0 ? "--" : "\(viewModel.ammo)", .yellow)
+            phoneStat("HP", "\(viewModel.health)", viewModel.health > 25 ? .green : .red)
+            faceView
+                .frame(width: 36, height: 36)
+            phoneStat("ARM", "\(viewModel.armor)", .blue)
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(viewModel.currentWeaponName)
+                    .font(.system(size: 15, weight: .black, design: .monospaced))
+                    .foregroundColor(.white)
+                HStack(spacing: 4) {
+                    ForEach(Array(["1", "2", "3", "4", "5"].enumerated()), id: \.offset) { index, slot in
+                        let names = ["FIST", "PISTOL", "SHOTGUN", "CHAINGUN", "LAUNCHER"]
+                        Text(slot)
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .foregroundColor(viewModel.currentWeaponName == names[index] ? .yellow : .gray)
+                    }
+                }
+                if !viewModel.heldKeys.isEmpty {
+                    HStack(spacing: 3) {
+                        ForEach(viewModel.heldKeys, id: \.self) { key in
+                            Circle()
+                                .fill(key == "R" ? Color.red : key == "B" ? Color.blue : Color.yellow)
+                                .frame(width: 8, height: 8)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: height)
+        .background(Color.black.opacity(0.62))
+        .overlay(Rectangle().fill(Color.white.opacity(0.28)).frame(height: 1), alignment: .top)
+    }
+
+    private func phoneStat(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.white.opacity(0.7))
+            Text(value)
+                .font(.system(size: 22, weight: .black, design: .monospaced))
+                .foregroundColor(color)
+                .shadow(color: .black.opacity(0.8), radius: 1, x: 0, y: 1)
+        }
+    }
+    #endif
+
+    private var macHUD: some View {
         ZStack {
             VStack(spacing: 0) {
                 // Crosshair

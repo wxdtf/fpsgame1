@@ -2,21 +2,19 @@
 //  TouchControls.swift
 //  fpsgame1
 //
-//  On-screen controls for iOS / iPadOS, laid over the game view:
+//  On-screen controls for iOS / iPadOS, laid over a full-bleed picture:
 //
-//    - left side: a floating virtual stick (thumb down anywhere, drag) moves.
-//      A dead zone and a soft curve keep a resting thumb still and small
-//      corrections fine.
-//    - right side: dragging looks around; a quick tap with no travel fires once
+//    - lower left: a move stick that is visible before the first touch. Putting
+//      a thumb down anywhere in the left zone recenters it; letting go parks
+//      it again.
+//    - everywhere else: drag to look. A short tap with no travel fires once
 //      and does not twitch the crosshair.
-//    - bottom corner: FIRE (hold), RUN (toggle), USE, weapon ◀ ▶. Sized for a
-//      thumb and kept clear of the Dynamic Island, the home indicator and the
-//      status bar.
-//    - top corner: MAP and PAUSE.
+//    - lower right: a large FIRE button where the right thumb rests, with USE,
+//      the weapon arrows and RUN on an arc within reach of it.
+//    - upper right: MAP and PAUSE, clear of the Dynamic Island.
 //
-//  Every control is its own view with its own drag gesture, so SwiftUI routes
-//  simultaneous touches (stick + look + fire) to the right one. The picture is
-//  drawn edge to edge; these insets are what keep thumbs off the island.
+//  Every control has its own gesture, so a stick, a look drag and FIRE can all
+//  be held at once.
 //
 
 #if os(iOS)
@@ -43,44 +41,25 @@ struct TouchControlsView: View {
             )
             let layout = PhoneLayout.layout(canvas: geo.size, safe: safe)
             ZStack(alignment: .topLeading) {
-                HStack(spacing: 0) {
-                    VirtualStickArea(inputManager: inputManager, radius: layout.stickRadius)
-                        .padding(.leading, layout.leadingInset)
-                        .frame(width: geo.size.width * layout.moveFraction)
-                    LookArea(inputManager: inputManager)
-                        .padding(.trailing, layout.clusterTrailing)
-                }
+                LookArea(inputManager: inputManager)
+                    .padding(.leading, layout.moveZoneWidth)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                HStack {
-                    Spacer()
-                    HoldButton(label: "MAP", width: layout.utilityWidth, height: layout.buttonHeight,
-                               inputManager: inputManager, button: .map)
-                    HoldButton(label: "II", width: layout.pauseWidth, height: layout.buttonHeight,
-                               inputManager: inputManager, button: .pause)
-                }
-                .padding(.top, layout.topInset)
-                .padding(.trailing, layout.trailingInset)
+                StickArea(
+                    inputManager: inputManager,
+                    anchor: layout.stick.center,
+                    radius: layout.stick.radius
+                )
+                .frame(width: layout.moveZoneWidth, height: geo.size.height, alignment: .topLeading)
 
-                VStack(alignment: .trailing, spacing: 8) {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        HoldButton(label: "\u{25C0}", width: layout.weaponWidth, height: layout.buttonHeight,
-                                   inputManager: inputManager, button: .previousWeapon)
-                        HoldButton(label: "\u{25B6}", width: layout.weaponWidth, height: layout.buttonHeight,
-                                   inputManager: inputManager, button: .nextWeapon)
-                        HoldButton(label: "USE", width: layout.useWidth, height: layout.buttonHeight,
-                                   inputManager: inputManager, button: .interact)
-                    }
-                    HStack(alignment: .bottom, spacing: 10) {
-                        ToggleButton(label: "RUN", width: layout.runWidth, height: layout.buttonHeight,
-                                     inputManager: inputManager, button: .sprint)
-                        HoldButton(label: "FIRE", width: layout.fireWidth, height: layout.fireHeight,
-                                   inputManager: inputManager, button: .fire)
-                    }
-                }
-                .padding(.trailing, layout.clusterTrailing)
-                .padding(.bottom, layout.clusterBottom)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                RoundHold(label: "USE", spot: layout.use, inputManager: inputManager, button: .interact, prominent: false)
+                RoundHold(label: "\u{25B6}", spot: layout.nextWeapon, inputManager: inputManager, button: .nextWeapon, prominent: false)
+                RoundHold(label: "\u{25C0}", spot: layout.previousWeapon, inputManager: inputManager, button: .previousWeapon, prominent: false)
+                RoundToggle(label: "RUN", spot: layout.run, inputManager: inputManager, button: .sprint)
+                RoundHold(label: "FIRE", spot: layout.fire, inputManager: inputManager, button: .fire, prominent: true)
+
+                RoundHold(label: "MAP", spot: layout.map, inputManager: inputManager, button: .map, prominent: false)
+                RoundHold(label: "II", spot: layout.pause, inputManager: inputManager, button: .pause, prominent: false)
             }
         }
         .background(WindowSafeAreaReader { next in
@@ -92,7 +71,7 @@ struct TouchControlsView: View {
 }
 
 /// Reads the window's safe area (Dynamic Island, home indicator) in screen points.
-private struct WindowSafeAreaReader: UIViewRepresentable {
+struct WindowSafeAreaReader: UIViewRepresentable {
     var onChange: (ScreenInsets) -> Void
 
     func makeUIView(context: Context) -> UIView {
@@ -111,35 +90,37 @@ private struct WindowSafeAreaReader: UIViewRepresentable {
     }
 }
 
-/// A stick that appears where the finger lands and follows it up to `radius`
-private struct VirtualStickArea: View {
+/// The parked stick, plus a drag zone that recenters it under the thumb.
+private struct StickArea: View {
     let inputManager: InputManager
+    let anchor: CGPoint
     let radius: CGFloat
     @State private var origin: CGPoint? = nil
     @State private var knob: CGSize = .zero
 
+    private var shownOrigin: CGPoint { origin ?? anchor }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
-            if let origin {
-                Circle()
-                    .stroke(Color.white.opacity(0.45), lineWidth: 2)
-                    .background(Circle().fill(Color.black.opacity(0.28)))
-                    .frame(width: radius * 2, height: radius * 2)
-                    .position(origin)
-                Circle()
-                    .fill(Color.white.opacity(0.7))
-                    .frame(width: 48, height: 48)
-                    .position(x: origin.x + knob.width, y: origin.y + knob.height)
-            }
+            Circle()
+                .stroke(Color.white.opacity(origin == nil ? 0.55 : 0.9), lineWidth: 3)
+                .background(Circle().fill(Color.black.opacity(origin == nil ? 0.28 : 0.4)))
+                .frame(width: radius * 2, height: radius * 2)
+                .position(shownOrigin)
+            Circle()
+                .fill(Color.white.opacity(origin == nil ? 0.55 : 0.9))
+                .frame(width: radius * 0.72, height: radius * 0.72)
+                .position(x: shownOrigin.x + knob.width, y: shownOrigin.y + knob.height)
         }
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .local)
                 .onChanged { value in
                     if origin == nil { origin = value.startLocation }
-                    var dx = value.translation.width
-                    var dy = value.translation.height
+                    let base = origin ?? anchor
+                    var dx = value.location.x - base.x
+                    var dy = value.location.y - base.y
                     let length = max(1, hypot(dx, dy))
                     if length > radius {
                         dx *= radius / length
@@ -155,10 +136,11 @@ private struct VirtualStickArea: View {
                     inputManager.setTouchMove(forward: 0, strafe: 0)
                 }
         )
+        .accessibilityLabel("Move")
     }
 }
 
-/// Drag to look around; a short tap with no travel fires once
+/// Drag to look around; a short tap with no travel fires once.
 private struct LookArea: View {
     let inputManager: InputManager
     @State private var lastTranslation: CGSize = .zero
@@ -192,41 +174,42 @@ private struct LookArea: View {
     }
 }
 
-private struct ButtonFace: View {
+private struct RoundFace: View {
     let label: String
-    let width: CGFloat
-    let height: CGFloat
+    let diameter: CGFloat
     let lit: Bool
+    let prominent: Bool
 
     var body: some View {
         Text(label)
-            .font(.system(size: width >= 90 ? 18 : 15, weight: .black, design: .monospaced))
+            .font(.system(size: diameter >= 90 ? 20 : 15, weight: .black, design: .monospaced))
             .foregroundColor(lit ? .black : .white)
-            .frame(width: width, height: height)
+            .frame(width: diameter, height: diameter)
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(lit ? Color.yellow.opacity(0.92) : Color.black.opacity(0.45))
+                Circle().fill(fill)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.white.opacity(lit ? 0.9 : 0.65), lineWidth: 2)
-            )
-            .shadow(color: .black.opacity(0.45), radius: 3, x: 0, y: 1)
+            .overlay(Circle().stroke(Color.white.opacity(lit ? 1 : 0.85), lineWidth: 3))
+            .shadow(color: .black.opacity(0.55), radius: 4, x: 0, y: 2)
+    }
+
+    private var fill: Color {
+        if lit { return Color.yellow.opacity(0.95) }
+        if prominent { return Color(red: 0.78, green: 0.1, blue: 0.08).opacity(0.88) }
+        return Color.black.opacity(0.5)
     }
 }
 
-/// Pressed while the finger is down
-private struct HoldButton: View {
+private struct RoundHold: View {
     let label: String
-    let width: CGFloat
-    let height: CGFloat
+    let spot: ControlSpot
     let inputManager: InputManager
     let button: InputManager.TouchButton
+    let prominent: Bool
     @State private var held = false
 
     var body: some View {
-        ButtonFace(label: label, width: width, height: height, lit: held)
-            .contentShape(Rectangle())
+        RoundFace(label: label, diameter: spot.diameter, lit: held, prominent: prominent)
+            .offset(x: spot.center.x - spot.diameter / 2, y: spot.center.y - spot.diameter / 2)
             .highPriorityGesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
@@ -244,20 +227,16 @@ private struct HoldButton: View {
     }
 }
 
-/// Each tap flips the state (sprint). The lit state is local because a thumb
-/// cannot hold RUN and FIRE at once; leaving the fight drops the view, which
-/// resets it together with the input.
-private struct ToggleButton: View {
+private struct RoundToggle: View {
     let label: String
-    let width: CGFloat
-    let height: CGFloat
+    let spot: ControlSpot
     let inputManager: InputManager
     let button: InputManager.TouchButton
     @State private var on = false
 
     var body: some View {
-        ButtonFace(label: label, width: width, height: height, lit: on)
-            .contentShape(Rectangle())
+        RoundFace(label: label, diameter: spot.diameter, lit: on, prominent: false)
+            .offset(x: spot.center.x - spot.diameter / 2, y: spot.center.y - spot.diameter / 2)
             .onTapGesture {
                 on.toggle()
                 inputManager.setTouchButton(button, pressed: on)

@@ -107,8 +107,9 @@ struct ContentView: View {
 
     private var gamePlayView: some View {
         ZStack {
-            // Game rendering output: Metal presents straight into its own view
-            // (letterboxed by the post kernel); the CPU fallback hands SwiftUI an image.
+            // Metal presents into the view. On iPhone the raycaster widens to fill
+            // a landscape screen; the Mac stays letterboxed at 16:10. The CPU
+            // fallback hands SwiftUI an image.
             if viewModel.usesMetalView {
                 MetalGameView(viewModel: viewModel)
                     .ignoresSafeArea()
@@ -123,11 +124,15 @@ struct ContentView: View {
                     .ignoresSafeArea()
             }
 
-            // HUD overlay, fitted to the same 16:10 box the renderer letterboxes into.
-            // Edge to edge, like the picture; the status bar itself clears the home indicator.
+            // On iPhone the HUD is a slim overlay in real points. On the Mac it
+            // stays inside the 960×600 frame with the picture.
+            #if os(iOS)
+            HUDView(viewModel: viewModel)
+                .ignoresSafeArea()
+            #else
             HUDView(viewModel: viewModel)
                 .fitDesignSize()
-                .ignoresSafeArea()
+            #endif
 
             // Input capture (transparent overlay): keyboard and mouse on the Mac, a
             // hardware keyboard on iPad; touches pass through it to the controls below

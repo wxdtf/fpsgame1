@@ -70,9 +70,10 @@ Team to the Apple ID you want to install with. A free Apple ID installs a build 
 on the phone for about a week. A paid developer account can also archive it and send it
 through TestFlight. The phone needs iOS 18 or later.
 
-Sound keeps playing when the ring/silent switch is on, because gunfire and enemy noises
-are part of the fight, and it mixes with music you already have on. Leaving the app pauses
-the fight.
+On the phone the view fills the screen, with a move stick on the left and a large
+FIRE button under the right thumb. Sound keeps playing when the ring/silent switch
+is on, because gunfire and enemy noises are part of the fight, and it mixes with
+music you already have on. Leaving the app pauses the fight.
 
 ## Tech Stack
 

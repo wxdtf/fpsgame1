@@ -191,54 +191,156 @@ struct ScreenInsets: Equatable {
     var trailing: CGFloat = 0
 }
 
+struct ControlSpot: Equatable {
+    var center: CGPoint
+    var diameter: CGFloat
+
+    var radius: CGFloat { diameter / 2 }
+}
+
 struct PhoneControlLayout: Equatable {
-    var moveFraction: CGFloat
-    var stickRadius: CGFloat
-    var leadingInset: CGFloat
-    var topInset: CGFloat
-    var trailingInset: CGFloat
-    var clusterTrailing: CGFloat
-    var clusterBottom: CGFloat
-    var buttonHeight: CGFloat
-    var fireWidth: CGFloat
-    var fireHeight: CGFloat
-    var utilityWidth: CGFloat
-    var useWidth: CGFloat
-    var weaponWidth: CGFloat
-    var runWidth: CGFloat
-    var pauseWidth: CGFloat
+    /// Always drawn, lower left, so the move control is visible before the first touch.
+    var stick: ControlSpot
+    /// Large button where the right thumb rests.
+    var fire: ControlSpot
+    /// USE, weapon next, weapon previous, RUN, in an arc opening up and left of FIRE.
+    var use: ControlSpot
+    var nextWeapon: ControlSpot
+    var previousWeapon: ControlSpot
+    var run: ControlSpot
+    var map: ControlSpot
+    var pause: ControlSpot
+    /// Left-hand touch region. Looking starts to the right of this.
+    var moveZoneWidth: CGFloat
+    /// Slim status bar, in points, not counting the home-indicator inset.
+    var hudHeight: CGFloat
 }
 
 enum PhoneLayout {
-    /// Where the thumb controls go on a landscape screen.
+    /// Thumb layout for a landscape phone or iPad.
     ///
-    /// The picture is letterboxed to 960×600 and drawn edge to edge, so the
-    /// home indicator and the Dynamic Island can cover it. Buttons are pushed
-    /// in by those insets and lifted above the status bar. A short phone gets
-    /// slightly smaller targets; they stay at least 44 points.
+    /// FIRE sits in the lower corner, clear of the Dynamic Island, the home
+    /// indicator and the status bar. USE, the weapon arrows and RUN sit on an
+    /// arc within a thumb's reach of it. The move stick is parked in the
+    /// opposite corner. A shorter screen uses slightly smaller targets; every
+    /// one stays at least 44 points.
+    static func hudHeight(forHeight height: CGFloat) -> CGFloat {
+        height < 430 ? 46 : 50
+    }
+
     static func layout(canvas: CGSize, safe: ScreenInsets) -> PhoneControlLayout {
-        let scale = FitDesignSize.scale(for: canvas)
-        let pictureH = FitDesignSize.designHeight * scale
-        let marginY = max(0, (canvas.height - pictureH) / 2)
         let compact = canvas.height < 430
-        let hudTop = marginY + PhoneHUD.statusBarDesignHeight * scale + 4
-        return PhoneControlLayout(
-            moveFraction: 0.40,
-            stickRadius: compact ? 64 : 76,
-            leadingInset: max(0, safe.leading),
-            topInset: max(0, safe.top) + 8,
-            trailingInset: max(0, safe.trailing) + 10,
-            clusterTrailing: max(0, safe.trailing) + 10,
-            clusterBottom: max(max(0, safe.bottom) + 10, hudTop),
-            buttonHeight: compact ? 50 : 56,
-            fireWidth: compact ? 100 : 116,
-            fireHeight: compact ? 66 : 78,
-            utilityWidth: compact ? 68 : 76,
-            useWidth: compact ? 72 : 80,
-            weaponWidth: compact ? 50 : 56,
-            runWidth: compact ? 64 : 72,
-            pauseWidth: compact ? 52 : 58
+        let hud = hudHeight(forHeight: canvas.height)
+        let fireD: CGFloat = compact ? 100 : 118
+        let secD: CGFloat = compact ? 56 : 64
+        let utilD: CGFloat = 50
+        let stickD: CGFloat = compact ? 118 : 136
+        let margin: CGFloat = 12
+
+        let top = max(0, safe.top)
+        let leading = max(0, safe.leading)
+        let bottom = max(0, safe.bottom)
+        let trailing = max(0, safe.trailing)
+
+        let floorY = canvas.height - bottom - hud - margin
+        let rightX = canvas.width - trailing - margin
+        let leftX = leading + margin
+
+        let fire = ControlSpot(
+            center: CGPoint(x: rightX - fireD / 2, y: floorY - fireD / 2),
+            diameter: fireD
         )
+
+        // Four secondaries across a 102° arc centered up-and-left of FIRE.
+        // The orbit is wide enough that neighbours do not overlap, and the
+        // lowest button still clears the status bar.
+        let step: CGFloat = 34
+        let chord = secD + 8
+        let orbit = max(
+            fireD / 2 + secD / 2 + 10,
+            chord / (2 * sin(step / 2 * .pi / 180))
+        )
+        let mid: CGFloat = 142
+        let angles: [CGFloat] = [
+            mid - 1.5 * step, mid - 0.5 * step, mid + 0.5 * step, mid + 1.5 * step,
+        ]
+        func spot(_ degrees: CGFloat) -> ControlSpot {
+            let radians = degrees * .pi / 180
+            return ControlSpot(
+                center: CGPoint(
+                    x: fire.center.x + cos(radians) * orbit,
+                    y: fire.center.y - sin(radians) * orbit
+                ),
+                diameter: secD
+            )
+        }
+        // 91° is just left of straight up, then around to the lower left.
+        let use = spot(angles[0])
+        let nextWeapon = spot(angles[1])
+        let previousWeapon = spot(angles[2])
+        let run = spot(angles[3])
+
+        let stick = ControlSpot(
+            center: CGPoint(x: leftX + stickD / 2, y: floorY - stickD / 2),
+            diameter: stickD
+        )
+        let pause = ControlSpot(
+            center: CGPoint(x: rightX - utilD / 2, y: top + margin + utilD / 2),
+            diameter: utilD
+        )
+        let map = ControlSpot(
+            center: CGPoint(x: pause.center.x - utilD - 10, y: pause.center.y),
+            diameter: utilD
+        )
+        let moveZone = min(canvas.width * 0.46, stick.center.x + stick.radius + 28)
+
+        return PhoneControlLayout(
+            stick: stick,
+            fire: fire,
+            use: use,
+            nextWeapon: nextWeapon,
+            previousWeapon: previousWeapon,
+            run: run,
+            map: map,
+            pause: pause,
+            moveZoneWidth: moveZone,
+            hudHeight: hud
+        )
+    }
+}
+
+// MARK: - Full-bleed frame
+
+enum SceneFrame {
+    /// The Mac window and the raycaster's native 16:10 frame.
+    static let baseWidth = 960
+    static let baseHeight = 600
+    /// Widest phone we will raycast for (a very wide landscape display).
+    static let maxWidth = 1600
+
+    /// Raycast size for a drawable. A screen wider than 16:10 (an iPhone in
+    /// landscape) gets a wider target so the picture fills the display and the
+    /// view shows more to the sides. A 16:10 or narrower drawable, including
+    /// the Mac window, stays 960×600 and letterboxes as before.
+    static func size(drawableWidth: Int, drawableHeight: Int) -> (width: Int, height: Int) {
+        guard drawableWidth > 0, drawableHeight > 0 else {
+            return (baseWidth, baseHeight)
+        }
+        let aspect = Double(drawableWidth) / Double(drawableHeight)
+        let baseAspect = Double(baseWidth) / Double(baseHeight)
+        guard aspect > baseAspect + 0.02 else {
+            return (baseWidth, baseHeight)
+        }
+        let widened = Int((Double(baseHeight) * aspect).rounded())
+        let width = min(maxWidth, max(baseWidth, widened))
+        return (width, baseHeight)
+    }
+
+    /// Scales the horizontal camera so the extra columns are extra view, not a
+    /// stretched 16:10 picture. 960 wide stays at 1.
+    static func planeScale(renderWidth: Int) -> Double {
+        guard renderWidth > 0 else { return 1 }
+        return Double(renderWidth) / Double(baseWidth)
     }
 }
 
@@ -264,11 +366,6 @@ enum PhoneHUD {
     static let minimapExtraTrailing: CGFloat = 0
     static let statusBarExtraBottom: CGFloat = 0
     #endif
-
-    /// Design pixels from the bottom of the frame to the top of the status bar.
-    static var statusBarDesignHeight: CGFloat {
-        64 * faceScale + 6 + 6 + statusBarExtraBottom
-    }
 }
 
 // MARK: - Frame pacing
