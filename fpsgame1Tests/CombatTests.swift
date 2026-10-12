@@ -44,6 +44,40 @@ final class CombatTests: XCTestCase {
         XCTAssertTrue(state.canFire)
     }
 
+    func testOutgoingGunStaysUntilSwitchIsHalfway() {
+        var state = WeaponState(type: .pistol)
+        state.beginSwitch(to: .shotgun)
+
+        XCTAssertEqual(state.type, .shotgun, "equipped weapon updates when the switch starts")
+        XCTAssertEqual(state.weaponShown, .pistol, "outgoing gun stays while it lowers")
+
+        state.switchProgress = 0.5.nextDown
+        XCTAssertEqual(state.weaponShown, .pistol)
+
+        state.switchProgress = 0.5
+        XCTAssertEqual(state.weaponShown, .shotgun, "incoming gun from halfway onward")
+
+        state.switchProgress = 1
+        XCTAssertEqual(state.weaponShown, .shotgun)
+
+        // Live clock: 4.0 progress per second, so 0.05s is still lowering and 0.1s more has crossed halfway.
+        state = WeaponState(type: .chaingun)
+        state.beginSwitch(to: .rocketLauncher)
+        state.update(deltaTime: 0.05)
+        XCTAssertEqual(state.switchProgress, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(state.weaponShown, .chaingun)
+        state.update(deltaTime: 0.1)
+        XCTAssertEqual(state.switchProgress, 0.6, accuracy: 1e-9)
+        XCTAssertEqual(state.weaponShown, .rocketLauncher)
+
+        while state.isSwitching { state.update(deltaTime: 0.05) }
+        XCTAssertEqual(state.weaponShown, .rocketLauncher)
+        XCTAssertEqual(state.switchProgress, 0)
+
+        state.beginSwitch(to: .fist)
+        XCTAssertEqual(state.weaponShown, .rocketLauncher, "the gun just equipped is the one that lowers next")
+    }
+
     func testEveryWeaponHasADefinition() {
         for type in WeaponType.allCases {
             let def = WeaponDefinition.forType(type)
