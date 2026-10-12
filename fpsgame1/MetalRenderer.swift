@@ -543,7 +543,8 @@ final class MetalRenderer {
 
     /// The weapon overlay as a sprite in front of everything, unshaded and unfogged
     private func weaponInstance(player: Player) -> SpriteInstance {
-        let id = SpriteSheetID.weapon(player.currentWeapon)
+        // Outgoing gun until the lower is halfway; weaponShown is the gun coming up after that.
+        let id = SpriteSheetID.weapon(player.weaponState.weaponShown)
         let location = spriteAtlas.location(id, frame: player.weaponState.currentFrame)
 
         // Keep the weapon's 8:5 pixel shape. On a 960-wide frame that is half

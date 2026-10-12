@@ -85,9 +85,20 @@ struct WeaponState {
     var cooldownTimer: Double = 0
     var isFiring: Bool = false
     var isSwitching: Bool = false
-    var switchProgress: Double = 0  // 0..1 (0=up, 0.5=down, 1=up with new weapon)
+    var switchProgress: Double = 0  // 0..1 (0=outgoing up, 0.5=swap, 1=incoming up)
+    private var outgoingWeapon: WeaponType?  // gun being put away, drawn until halfway
 
     var definition: WeaponDefinition { WeaponDefinition.forType(type) }
+
+    /// Sprite to draw: the outgoing gun until the swap is halfway, then the incoming gun.
+    /// `type` itself changes when the switch starts.
+    var weaponShown: WeaponType {
+        if isSwitching, switchProgress < 0.5, let outgoingWeapon {
+            return outgoingWeapon
+        }
+        return type
+    }
+
     var isAnimating: Bool { currentFrame > 0 || isSwitching }
     var canFire: Bool { cooldownTimer <= 0 && !isAnimating }
 
@@ -103,6 +114,7 @@ struct WeaponState {
             if switchProgress >= 1.0 {
                 switchProgress = 0
                 isSwitching = false
+                outgoingWeapon = nil
             }
             return
         }
@@ -131,6 +143,7 @@ struct WeaponState {
 
     mutating func beginSwitch(to newType: WeaponType) {
         guard !isSwitching else { return }
+        outgoingWeapon = type
         type = newType
         isSwitching = true
         switchProgress = 0

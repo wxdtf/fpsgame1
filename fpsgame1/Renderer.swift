@@ -481,7 +481,8 @@ final class Renderer {
     // MARK: - Weapon Overlay
 
     private func renderWeapon(player: Player) {
-        let sheet = sprites.weaponSprites(for: player.currentWeapon)
+        // Outgoing gun until the lower is halfway; weaponShown is the gun coming up after that.
+        let sheet = sprites.weaponSprites(for: player.weaponState.weaponShown)
         let frameIdx = min(player.weaponState.currentFrame, sheet.frameCount - 1)
         let srcPixels = sheet.frames[frameIdx]
 
