@@ -456,24 +456,11 @@ struct Enemy: Identifiable {
     }
 
     private func canSeePlayer(playerX: Double, playerY: Double, world: GameWorld) -> Bool {
-        let dx = playerX - x
-        let dy = playerY - y
-        let dist = sqrt(dx * dx + dy * dy)
-
-        let steps = Int(dist * 4)
-        // Point-blank range: nothing can be in between (also keeps 1..<steps a valid range)
-        guard steps > 1 else { return true }
-        for i in 1..<steps {
-            let t = Double(i) / Double(steps)
-            let checkX = x + dx * t
-            let checkY = y + dy * t
-            let tileX = Int(checkX)
-            let tileY = Int(checkY)
-            if world.isSolid(x: tileX, y: tileY) {
-                return false
-            }
-        }
-        return true
+        // Grid walk rather than a quarter-tile sample. The sample skipped a wall
+        // the look only clipped, and `1..<steps` also trapped when the player was
+        // within a quarter tile (an empty range). Point-blank looks stay clear
+        // because both ends share a cell and that cell is not an obstacle.
+        !world.blocksSight(fromX: x, fromY: y, toX: playerX, toY: playerY)
     }
 
     // MARK: - Movement
