@@ -48,6 +48,9 @@ final class InputManager {
         var forward: Double = 0
         var strafe: Double = 0
         var turn: Double = 0
+        /// This frame's turn came from a finger drag, so touch aim assist may apply.
+        /// Mouse, keyboard and controller turns leave this false.
+        var touchLooking: Bool = false
         var shoot: Bool = false
         var interact: Bool = false
         var weaponSwitch: Int? = nil
@@ -93,8 +96,8 @@ final class InputManager {
         case fire, interact, sprint, nextWeapon, previousWeapon, pause, map
     }
     private(set) var touch = TouchState()
-    /// Points of finger travel per unit of mouse delta on the look area
-    static let touchLookScale: CGFloat = 2.2
+    /// Set when a finger drag contributed look this frame; cleared by getInputState
+    private var touchLookThisFrame = false
 
     /// Virtual stick vector, each axis -1...1 (forward positive, strafe right positive)
     func setTouchMove(forward: Double, strafe: Double) {
@@ -119,6 +122,15 @@ final class InputManager {
     /// Drop the touch state (screen change, fingers lost)
     func clearTouch() {
         touch = TouchState()
+        touchLookThisFrame = false
+    }
+
+    /// Look delta from a finger drag. Marks the frame so aim assist can run.
+    /// A zero delta (the tap slop) does not count as looking.
+    func addTouchLook(deltaX: CGFloat, deltaY: CGFloat) {
+        guard deltaX != 0 || deltaY != 0 else { return }
+        mouseMoved(deltaX: deltaX, deltaY: deltaY)
+        touchLookThisFrame = true
     }
     private var prevLeftShoulder = false
     private var prevRightShoulder = false
@@ -183,6 +195,8 @@ final class InputManager {
         if keys.contains(Self.keyRight) { turn += 0.04 }
         turn += pad.turn * mouseSensitivity
         state.turn = turn
+        state.touchLooking = touchLookThisFrame
+        touchLookThisFrame = false
         state.shoot = mouseClicked || mouseHeld || keys.contains(Self.keySpace) || pad.shoot || touch.shoot
         state.interact = keys.contains(Self.keyE) || pad.interact || touch.interact
         state.escapePressed = keys.contains(Self.keyEscape)

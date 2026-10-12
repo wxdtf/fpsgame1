@@ -89,8 +89,13 @@ final class MetalRenderer {
     private let spritePipeline: MTLComputePipelineState
     private let postPipeline: MTLComputePipelineState
 
-    let width: Int
-    let height: Int
+    /// Columns and rows drawn this frame. On iPhone a wide screen draws more
+    /// columns so the picture fills the display; the Mac stays at 960×600.
+    private(set) var width: Int
+    private(set) var height: Int
+    /// Allocated scene size. The frame above never exceeds it.
+    private let bufferWidth: Int
+    private let bufferHeight: Int
 
     // Static GPU resources
     private let sceneTexture: MTLTexture     // low-res frame before the post pass
@@ -148,11 +153,17 @@ final class MetalRenderer {
         self.spritePipeline = sprite
         self.postPipeline = post
 
-        width = GameConstants.renderWidth * GameConstants.gpuRenderScale
-        height = GameConstants.renderHeight * GameConstants.gpuRenderScale
+        bufferHeight = SceneFrame.baseHeight
+        #if os(iOS)
+        bufferWidth = SceneFrame.maxWidth
+        #else
+        bufferWidth = SceneFrame.baseWidth
+        #endif
+        width = SceneFrame.baseWidth
+        height = SceneFrame.baseHeight
 
         let sceneDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+            pixelFormat: .bgra8Unorm, width: bufferWidth, height: bufferHeight, mipmapped: false)
         sceneDesc.usage = [.shaderRead, .shaderWrite]
         sceneDesc.storageMode = .private
         guard let scene = device.makeTexture(descriptor: sceneDesc) else { return nil }
@@ -180,7 +191,7 @@ final class MetalRenderer {
 
         guard let tiles = device.makeBuffer(length: Self.maxTiles * MemoryLayout<Int32>.stride,
                                             options: .storageModeShared),
-              let zBuf = device.makeBuffer(length: width * MemoryLayout<Float>.stride,
+              let zBuf = device.makeBuffer(length: bufferWidth * MemoryLayout<Float>.stride,
                                            options: .storageModePrivate) else { return nil }
         worldTilesBuffer = tiles
         zBufferGPU = zBuf
@@ -232,6 +243,17 @@ final class MetalRenderer {
         let slot = frameIndex % Self.maxFramesInFlight
         frameIndex += 1
         currentTime = elapsedTime
+
+        #if os(iOS)
+        // Match a landscape phone: wider than 16:10 means more columns and a
+        // wider horizontal view, so the post pass has no side bars to draw.
+        let fitted = SceneFrame.size(
+            drawableWidth: drawable.texture.width,
+            drawableHeight: drawable.texture.height
+        )
+        width = min(bufferWidth, fitted.width)
+        height = min(bufferHeight, fitted.height)
+        #endif
 
         let portalFrame = TextureAtlas.exitPortalFrame(at: elapsedTime)
         ensurePortalFrameUploaded(portalFrame)
@@ -331,13 +353,14 @@ final class MetalRenderer {
 
     private func fillUniforms(slot: Int, player: Player, world: GameWorld, torchCount: Int,
                               portalFrame: Int, elapsedTime: Double) {
+        let widen = Float(SceneFrame.planeScale(renderWidth: width))
         var uniforms = RaycastUniforms(
             playerX: Float(player.x),
             playerY: Float(player.y),
             dirX: Float(player.dirX),
             dirY: Float(player.dirY),
-            planeX: Float(player.planeX),
-            planeY: Float(player.planeY),
+            planeX: Float(player.planeX) * widen,
+            planeY: Float(player.planeY) * widen,
             renderWidth: Int32(width),
             renderHeight: Int32(height),
             texSize: Int32(GameConstants.textureSize),
@@ -424,7 +447,10 @@ final class MetalRenderer {
         candidates.reserveCapacity(enemies.count + items.count + projectiles.count + explosions.count + hitSplashes.count)
 
         let w = width, h = height, halfH = h / 2
-        let invDet = 1.0 / (player.planeX * player.dirY - player.dirX * player.planeY)
+        let widen = SceneFrame.planeScale(renderWidth: w)
+        let planeX = player.planeX * widen
+        let planeY = player.planeY * widen
+        let invDet = 1.0 / (planeX * player.dirY - player.dirX * planeY)
 
         func add(x: Double, y: Double, location: SpriteAtlas.FrameLocation,
                  vOffset: Double, scale: Double, fullBright: Bool, mirrored: Bool = false) {
@@ -433,7 +459,7 @@ final class MetalRenderer {
             guard dist < GameConstants.maxRenderDistance else { return }
 
             let tX = invDet * (player.dirY * dx - player.dirX * dy)
-            let tY = invDet * (-player.planeY * dx + player.planeX * dy)
+            let tY = invDet * (-planeY * dx + planeX * dy)
             guard tY > 0.1 else { return }
 
             let invTY = 1.0 / tY
@@ -520,8 +546,10 @@ final class MetalRenderer {
         let id = SpriteSheetID.weapon(player.currentWeapon)
         let location = spriteAtlas.location(id, frame: player.weaponState.currentFrame)
 
-        let destW = width / 2
+        // Keep the weapon's 8:5 pixel shape. On a 960-wide frame that is half
+        // the width, same as before; a wider phone does not stretch it.
         let destH = height / 2
+        let destW = destH * 8 / 5
         var destX = (width - destW) / 2
         var destY = height - destH
         // Bob amplitudes are tuned in 480×300 pixels; scale them with the resolution

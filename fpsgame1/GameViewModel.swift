@@ -7,6 +7,9 @@ import SwiftUI
 import QuartzCore
 import Metal
 import MetalKit
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @Observable
 @MainActor
@@ -286,6 +289,31 @@ final class GameViewModel {
         timer?.cancel()
         timer = nil
         audio.stopBGM()
+        syncIdleTimer()
+    }
+
+    /// Leave the fight when the app is no longer in front (app switcher, a call,
+    /// Control Center). Coming back leaves the pause menu up so the player is
+    /// not dropped into a fight they cannot see. Audio follows the same edges.
+    func handleScenePhase(_ phase: ScenePhase) {
+        if PlayLifecycle.shouldAutoPause(isPlaying: gameEngine?.state == .playing, isActive: phase == .active) {
+            inputManager.clearTouch()
+            togglePause()
+            audio.stopBGM()
+        }
+        if phase == .active {
+            audio.resumePlayback()
+        } else {
+            audio.suspendPlayback()
+        }
+        syncIdleTimer()
+    }
+
+    /// Keep the screen awake during a fight and let it sleep on the menus.
+    func syncIdleTimer() {
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = gameState == .playing
+        #endif
     }
 
     func togglePause() {
@@ -459,6 +487,7 @@ final class GameViewModel {
                 case .chaingun: audio.playGunshot()
                 case .rocketLauncher: audio.playRocketLaunch()
                 }
+                GameHaptics.weaponFired(rapid: firedWeapon == .chaingun)
             }
 
             // Footsteps: detect half-cycle crossings of bobPhase (every π)
@@ -504,6 +533,7 @@ final class GameViewModel {
             // Player hurt
             if engine.player.health < prevHealth {
                 audio.playHurt()
+                GameHaptics.playerHurt()
             }
 
             // Enemy killed
@@ -524,6 +554,7 @@ final class GameViewModel {
             // Item pickup
             if engine.pickupFlashTimer > prevPickup {
                 audio.playPickup()
+                GameHaptics.itemPickup()
             }
 
             prevPlayerHealth = engine.player.health
@@ -709,6 +740,7 @@ final class GameViewModel {
                 playerAngle: playerAngle
             )
         }
+        syncIdleTimer()
     }
 
     /// Pre-rendered image of the current face frame (nil before a face exists)

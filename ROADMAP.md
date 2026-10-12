@@ -126,8 +126,43 @@ Found by reviewing the code and by running the new level validator:
       strafing across one) used to flip between two views every frame. The engine now
       settles each enemy's view once per tick (`Enemy.updateSpriteView`): the sector on
       screen stays until the facing is 6° past its edge, and both renderers draw that.
-- [ ] iOS device play-test: the touch layout, look sensitivity and button sizes have only
-      been checked by reasoning and the simulator build; tune them on a phone and an iPad.
+- [ ] On-device feel check of the iPhone pass below, on a phone and an iPad. The
+      numbers were chosen for a 6.3-inch landscape ProMotion phone and covered by unit
+      tests; only a real thumb can say if the look speed or the FIRE button wants
+      another nudge.
+
+## iPhone play pass
+
+Tuned for a landscape iPhone with a Dynamic Island and a 120 Hz display (the
+owner's iPhone 17 Pro). macOS keyboard, mouse and controller input are unchanged.
+
+- Touch stick: radial dead zone and a soft curve, so a resting thumb does not creep
+  and a full push is still full speed.
+- Look: a short tap fires without twitching the crosshair; a drag turns faster, and
+  the existing look-sensitivity slider still scales it.
+- A narrow touch-only aim assist pulls the crosshair onto an enemy you are already
+  almost aiming at, never through a wall, and it lets go when you flick away.
+  Mouse and controller aim are not assisted.
+- The picture fills the phone. A landscape screen wider than the Mac's 16:10
+  window is drawn wider, so you see more to the sides instead of black bars.
+  The Mac window stays 16:10.
+- FIRE is a large red button where the right thumb rests. USE, the weapon
+  arrows and RUN sit on an arc next to it. A move stick is visible in the lower
+  left before you touch it. MAP and pause sit in the top corner, clear of the
+  Dynamic Island. The health bar is a short strip along the bottom with larger
+  numbers. The home-indicator swipe is deferred so FIRE does not leave the app.
+- On the phone the status bar is a short translucent strip (ammo, health, face,
+  armor, weapon) in real screen points, so it no longer scales down with the old
+  16:10 frame. The Mac HUD is unchanged.
+- The Metal view asks for 120 frames per second (the system clamps this on a 60 Hz
+  display) and drops to 60 if the device gets thermally hot. iPhone is allowed past
+  60 via `CADisableMinimumFrameDurationOnPhone`.
+- Sound uses the playback session, so the silent switch does not mute the fight, and
+  it still mixes with the user's music. A phone call pauses it and resumes only if
+  the system says to. Leaving the app pauses the fight on the pause menu and stops
+  the sound; the screen stays awake only while you are actually playing.
+- Light haptics on buttons, shots, getting hurt and pickups. The chaingun is throttled
+  so it does not buzz.
 
 ## How to work on sprite art
 

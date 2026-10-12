@@ -276,8 +276,21 @@ final class GameEngine {
         secretFoundThisFrame = false
         spawnInvincibilityTimer = max(0, spawnInvincibilityTimer - deltaTime)
 
-        // Player movement
+        // Player movement. Touch aim assist is applied after the finger's own
+        // turn and before the shot, and only while a finger is dragging the look.
         player.rotate(by: input.turn)
+        if input.touchLooking {
+            let targets = enemies.map {
+                AimAssist.Target(x: $0.x, y: $0.y, alive: $0.isAlive, hitRadius: $0.type.hitRadius)
+            }
+            let nudge = AimAssist.yaw(
+                playerX: player.x, playerY: player.y, angle: player.angle,
+                turnThisFrame: input.turn, deltaTime: deltaTime, targets: targets
+            ) { tileX, tileY in
+                world.isSolid(x: tileX, y: tileY)
+            }
+            if nudge != 0 { player.rotate(by: nudge) }
+        }
         player.move(
             forward: input.forward,
             strafe: input.strafe,
