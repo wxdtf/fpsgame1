@@ -30,6 +30,12 @@ final class MetalViewCoordinator: NSObject, MTKViewDelegate {
     nonisolated func draw(in view: MTKView) {
         // MTKView calls this on the main thread
         MainActor.assumeIsolated {
+            let fps = DisplayPacing.framesPerSecond(
+                thermal: DisplayPacing.thermal(ProcessInfo.processInfo.thermalState)
+            )
+            if view.preferredFramesPerSecond != fps {
+                view.preferredFramesPerSecond = fps
+            }
             viewModel.renderMetalFrame(in: view)
         }
     }
@@ -39,7 +45,12 @@ private func makeMetalView(viewModel: GameViewModel, coordinator: MetalViewCoord
     let view = MTKView(frame: .zero, device: viewModel.metalDevice)
     view.colorPixelFormat = .bgra8Unorm
     view.framebufferOnly = false        // the post kernel writes the drawable directly
-    view.preferredFramesPerSecond = 60
+    // 120 on ProMotion; a 60 Hz display clamps. The draw callback drops this to
+    // 60 if the device is thermally serious. iPhone needs
+    // CADisableMinimumFrameDurationOnPhone or the system stays at 60.
+    view.preferredFramesPerSecond = DisplayPacing.framesPerSecond(
+        thermal: DisplayPacing.thermal(ProcessInfo.processInfo.thermalState)
+    )
     view.isPaused = false
     view.enableSetNeedsDisplay = false
     view.delegate = coordinator

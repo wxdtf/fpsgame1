@@ -8,6 +8,10 @@ import SwiftUI
 struct HUDView: View {
     let viewModel: GameViewModel
 
+    private func mono(_ size: CGFloat, _ weight: Font.Weight = .bold) -> Font {
+        .system(size: size * PhoneHUD.textBoost, weight: weight, design: .monospaced)
+    }
+
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
@@ -24,7 +28,7 @@ struct HUDView: View {
             VStack(spacing: 4) {
                 if viewModel.levelNameOpacity > 0 {
                     Text(viewModel.levelName)
-                        .font(.system(size: 22, weight: .black, design: .monospaced))
+                        .font(mono(22, .black))
                         .foregroundColor(.green)
                         .shadow(color: .black, radius: 4, x: 2, y: 2)
                         .opacity(viewModel.levelNameOpacity)
@@ -37,10 +41,10 @@ struct HUDView: View {
                 if !viewModel.objectiveText.isEmpty {
                     HStack(spacing: 6) {
                         Text(viewModel.objectiveComplete ? "✓" : "◆")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(mono(12, .bold))
                             .foregroundColor(viewModel.objectiveComplete ? .green : .yellow)
                         Text(viewModel.objectiveText)
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(mono(14, .bold))
                             .foregroundColor(viewModel.objectiveComplete ? .green : .yellow)
                     }
                     .padding(.horizontal, 8)
@@ -54,7 +58,7 @@ struct HUDView: View {
                 if viewModel.bossActive {
                     VStack(spacing: 3) {
                         Text(viewModel.bossName)
-                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                            .font(mono(13, .black))
                             .foregroundColor(.red)
                             .shadow(color: .black, radius: 2)
                         ZStack(alignment: .leading) {
@@ -92,7 +96,7 @@ struct HUDView: View {
                             itemPositions: viewModel.itemPositions
                         )
                         .padding(.top, 8)
-                        .padding(.trailing, 8)
+                        .padding(.trailing, 8 + PhoneHUD.minimapExtraTrailing)
                     }
                     Spacer()
                 }
@@ -103,7 +107,7 @@ struct HUDView: View {
                 VStack {
                     Spacer()
                     Text(viewModel.statusMessage)
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .font(mono(18, .bold))
                         .foregroundColor(.red)
                         .shadow(color: .black, radius: 2)
                         .padding(.bottom, 80)
@@ -115,11 +119,11 @@ struct HUDView: View {
     private var crosshair: some View {
         ZStack {
             Rectangle()
-                .fill(Color.white.opacity(0.8))
-                .frame(width: 2, height: 12)
+                .fill(Color.white.opacity(0.9))
+                .frame(width: 3, height: 16 * PhoneHUD.textBoost)
             Rectangle()
-                .fill(Color.white.opacity(0.8))
-                .frame(width: 12, height: 2)
+                .fill(Color.white.opacity(0.9))
+                .frame(width: 16 * PhoneHUD.textBoost, height: 3)
         }
     }
 
@@ -135,7 +139,7 @@ struct HUDView: View {
 
             // Face
             faceView
-                .frame(width: 64, height: 64)
+                .frame(width: 64 * PhoneHUD.faceScale, height: 64 * PhoneHUD.faceScale)
                 .padding(.horizontal, 8)
 
             // Armor section
@@ -146,31 +150,31 @@ struct HUDView: View {
             // Weapon + Level section
             VStack(spacing: 2) {
                 Text(viewModel.character.name)
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .font(mono(11, .black))
                     .foregroundColor(viewModel.character.accentColor)
                 Text("LVL \(viewModel.currentLevel)")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(mono(12, .bold))
                     .foregroundColor(.cyan)
                 Text(viewModel.currentWeaponName)
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .font(mono(16, .bold))
                     .foregroundColor(.white)
 
                 // Weapon slots
                 HStack(spacing: 3) {
                     Text("1")
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(mono(11))
                         .foregroundColor(viewModel.currentWeaponName == "FIST" ? .yellow : .gray)
                     Text("2")
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(mono(11))
                         .foregroundColor(viewModel.currentWeaponName == "PISTOL" ? .yellow : .gray)
                     Text("3")
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(mono(11))
                         .foregroundColor(viewModel.currentWeaponName == "SHOTGUN" ? .yellow : .gray)
                     Text("4")
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(mono(11))
                         .foregroundColor(viewModel.currentWeaponName == "CHAINGUN" ? .yellow : .gray)
                     Text("5")
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(mono(11))
                         .foregroundColor(viewModel.currentWeaponName == "LAUNCHER" ? .yellow : .gray)
                 }
 
@@ -185,10 +189,11 @@ struct HUDView: View {
                     }
                 }
             }
-            .frame(width: 80)
+            .frame(width: 96 * PhoneHUD.textBoost)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 6 + PhoneHUD.statusBarExtraBottom)
         .background(
             LinearGradient(
                 colors: [Color(white: 0.15), Color(white: 0.08)],
@@ -207,13 +212,13 @@ struct HUDView: View {
     private func statBox(label: String, value: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(label)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(mono(12, .bold))
                 .foregroundColor(.gray)
             Text(value)
-                .font(.system(size: 26, weight: .heavy, design: .monospaced))
+                .font(mono(28, .heavy))
                 .foregroundColor(color)
         }
-        .frame(width: 100)
+        .frame(width: 108 * PhoneHUD.textBoost)
     }
 
     private var faceView: some View {
@@ -328,7 +333,7 @@ struct MinimapView: View {
             path.addLine(to: lineEnd)
             context.stroke(path, with: .color(.green), lineWidth: 1)
         }
-        .frame(width: 120, height: 120)
+        .frame(width: 120 * PhoneHUD.minimapScale, height: 120 * PhoneHUD.minimapScale)
         .background(Color.black.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay(

@@ -15,6 +15,9 @@ final class AudioManager {
     private var isSetup = false
     private let poolSize = 8
     private var nextNodeIndex = 0
+    #if os(iOS)
+    private var interruptionObserver: NSObjectProtocol?
+    #endif
 
     private init() {
         setupEngine()
@@ -22,10 +25,11 @@ final class AudioManager {
 
     private func setupEngine() {
         #if os(iOS)
-        // Games play under the ambient category: silenced by the ring/silent switch,
-        // and mixed with whatever the user has playing.
-        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // Playback ignores the ring/silent switch. Enemy alerts and gunfire are
+        // part of the fight, and the session still mixes with the user's music.
+        // Leaving the app suspends it, so it does not keep playing in a pocket.
+        configureSession()
+        installInterruptionHandler()
         #endif
         let engine = AVAudioEngine()
 
@@ -57,6 +61,70 @@ final class AudioManager {
         } catch {
             // Audio not available - game still works
         }
+    }
+
+    // MARK: - Session
+
+    #if os(iOS)
+    private func configureSession() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        try? session.setActive(true)
+    }
+
+    private func installInterruptionHandler() {
+        guard interruptionObserver == nil else { return }
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                guard let kind = Self.interruptionKind(from: notification) else { return }
+                self.applyInterruption(kind)
+            }
+        }
+    }
+
+    private static func interruptionKind(from notification: Notification) -> AudioInterruptions.Kind? {
+        guard let info = notification.userInfo,
+              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return nil }
+        if type == .began { return .began }
+        let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+        let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+        return .ended(shouldResume: options.contains(.shouldResume))
+    }
+
+    private func applyInterruption(_ kind: AudioInterruptions.Kind) {
+        switch AudioInterruptions.reaction(to: kind) {
+        case .suspend: suspendPlayback()
+        case .resume: resumePlayback()
+        case nil: break
+        }
+    }
+    #endif
+
+    /// Pause the engine and give the speakers back. Safe to call more than once.
+    func suspendPlayback() {
+        #if os(iOS)
+        audioEngine?.pause()
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        #endif
+    }
+
+    /// Bring the session back after a call, Siri, or a return to the app.
+    func resumePlayback() {
+        #if os(iOS)
+        configureSession()
+        guard let engine = audioEngine else { return }
+        if !engine.isRunning {
+            try? engine.start()
+        }
+        for node in playerNodes where !node.isPlaying { node.play() }
+        if let ambient = ambientNode, !ambient.isPlaying { ambient.play() }
+        #endif
     }
 
     // MARK: - Volume

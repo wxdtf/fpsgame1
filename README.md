@@ -61,6 +61,19 @@ touch screen the game shows on-screen controls (see the table above); a paired c
 or a hardware keyboard works exactly like on the Mac. Screens are laid out for a 960×600
 window and scale down to fit smaller displays such as an iPhone.
 
+### On your iPhone
+
+The bundle id is `jack.fpsgame1`. The project uses automatic signing and does not name a
+team, so the first time you run it on a phone you pick one: open `fpsgame1.xcodeproj` in
+Xcode 26, choose your iPhone as the run destination, and under Signing & Capabilities set
+Team to the Apple ID you want to install with. A free Apple ID installs a build that stays
+on the phone for about a week. A paid developer account can also archive it and send it
+through TestFlight. The phone needs iOS 18 or later.
+
+Sound keeps playing when the ring/silent switch is on, because gunfire and enemy noises
+are part of the fight, and it mixes with music you already have on. Leaving the app pauses
+the fight.
+
 ## Tech Stack
 
 - **SwiftUI** — UI framework and game state management
